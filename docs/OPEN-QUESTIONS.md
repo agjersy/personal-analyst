@@ -8,7 +8,7 @@ Every question that blocked phase 0 has been answered. Numbering is preserved fr
 
 | Item | Decision | Where it landed |
 |---|---|---|
-| OQ-1 Desktop shell | Tauri 2 with a Rust core and a React renderer, for cross-platform support. | ARCHITECTURE.md section 3 |
+| OQ-1 Desktop shell | Tauri 2 as a host-native desktop application for macOS and Linux (native windows, menus, installers; no browser, no local server; interface drawn by the OS webview component). | ARCHITECTURE.md section 3 |
 | OQ-2 Platforms and remote hosts | macOS and Linux are prioritized for both the desktop app and remote targets through phase 3. Windows is deferred to phase 4. Remote hosts are reached as login-node sessions. | ARCHITECTURE.md sections 5.5, 5.6, 9 |
 | OQ-3 Sandbox and network | OS-level isolation (`bubblewrap` on Linux, `sandbox-exec` on macOS), network denied by default with per-run grants and host allowlists, container backend as an opt-in, resource-limits-only fallback badged in the UI where isolation is unavailable. | ARCHITECTURE.md section 5.6 |
 | OQ-4 Edit gating | `review` is the default mode, review is per hunk, protected paths and protected-region markers are in the first version. Scope declaration applies in every mode. | ARCHITECTURE.md sections 5.7, 5.8 |
@@ -17,7 +17,7 @@ Every question that blocked phase 0 has been answered. Numbering is preserved fr
 | OQ-12 Model roster | None. The design and the evaluation suite are model agnostic. A capability baseline (native tool calling, streaming, at least 32k context) defines a performant model; capabilities are probed at first use. The text-protocol fallback ships as a flagged, degraded tier the evaluation suite does not certify. | ARCHITECTURE.md sections 5.7, 5.10, 10 |
 | OQ-13 Where analysis runs | Remote execution over SSH is a first-version feature designed in from phase 0. | ARCHITECTURE.md section 5.5 |
 | OQ-14 Data location | Data is never synced and stays where it is generated. Only rendered products (figures, logs, run metadata, equation results) are transmitted back to the UI. Data outputs are inspected in place through bounded previews. | ARCHITECTURE.md section 5.5, VISION.md principle 7 |
-| OQ-17 Scheduler integration | Login-node sessions for now, behind a launcher interface so a scheduler launcher (Slurm and similar) can be added later without changing the kernel protocol or agent loop. | ARCHITECTURE.md section 5.5 |
+| OQ-17 Remote runner and scheduler | Default is fully local. The default remote runner is a native environment on a remote Linux machine (Ubuntu or Fedora) over SSH; a cluster login node is the same target kind. Slurm scheduler integration is a planned later extension behind the launcher interface. | ARCHITECTURE.md section 5.5 |
 | OQ-18 Remote repo model | The repo lives locally and is mirrored to the remote host before runs. The remote-primary alternative is rejected. | ARCHITECTURE.md section 5.5 |
 
 ## 2. Open for phase 1 and later

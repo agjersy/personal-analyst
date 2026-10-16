@@ -8,11 +8,11 @@ This document specifies the architecture of the desktop application described in
 
 | # | Decision | Resolution | Status |
 |---|---|---|---|
-| D1 | Desktop shell | Tauri 2: Rust core, React and TypeScript renderer in the system webview | Decided |
+| D1 | Desktop shell | Tauri 2: a host-native desktop application (native window, menus, dialogs, installers; no browser, no local server). Rust core; the interface is drawn by the OS's embedded webview component (WKWebView on macOS, WebKitGTK on Linux) | Decided |
 | D2 | Analysis runtime | Python, one `uv`-managed virtual environment per session. `uv` only; no conda | Decided |
 | D3 | App tooling runtime | A hidden, app-owned Python environment per execution target for the kernel, SymPy, Ruff, and language servers | Recommended |
 | D4 | Model access | One internal interface, two wire adapters (OpenAI-compatible chat completions, Anthropic Messages). No model-specific code paths; capabilities probed, not hand-listed | Decided |
-| D5 | Execution targets | Every session binds to a target: local, or a remote host over SSH. Kernel protocol is transport-agnostic. Local repo is canonical; remote holds a synced mirror. Data is never synced; only rendered products (figures, logs, metadata, equation results) return to the UI | Decided |
+| D5 | Execution targets | Default is fully local. The default remote target is a native environment on a remote Linux machine (Ubuntu or Fedora) over SSH; a cluster login node is the same target kind. Kernel protocol is transport-agnostic. Local repo is canonical; remote holds a synced mirror. Data is never synced; only rendered products (figures, logs, metadata, equation results) return to the UI | Decided |
 | D6 | Sandbox | `bubblewrap` on Linux (local and remote), `sandbox-exec` on macOS, network denied by default with per-run grants, container backend optional, unsandboxed with a visible badge where neither exists | Decided |
 | D7 | Edit gating default | Review mode with per-hunk accept and reject; protected paths and protected-region markers in the first version | Decided |
 | D8 | Equation source | AST-derived for pure expressions, declared-and-checked for everything else, LLM-explained marked unverified | Open, see OQ-5 |
@@ -24,7 +24,7 @@ This document specifies the architecture of the desktop application described in
 | D14 | External tools | MCP client (stdio and streamable HTTP) via the official Rust SDK; built-in tools share the same schema | Recommended |
 | D15 | Evaluation | Model-agnostic task suite with automatic graders; produces a scorecard per configured model; no model is privileged | Decided |
 | D16 | Platforms | macOS and Linux first, for both the desktop app and remote targets. Windows deferred to phase 4 | Decided |
-| D17 | Run launcher | Runs start directly on the target (local process or SSH login node) behind a launcher interface; a scheduler launcher (Slurm and similar) is a later addition, not a first-version feature | Decided |
+| D17 | Run launcher | Runs start directly on the target (local process, remote Linux machine, or cluster login node) behind a launcher interface; a Slurm scheduler launcher is a planned later extension, not a first-version feature | Decided |
 
 ## 2. System overview
 
@@ -91,11 +91,13 @@ Three tiers:
 
 ## 3. Desktop stack (D1)
 
-**Decided: Tauri 2 with a Rust core and a React/TypeScript renderer.**
+**Decided: Tauri 2, built as a host-native desktop application for macOS and Linux.**
+
+What "native" means here: the app is a single native executable with native windows, menus, file dialogs, keyboard handling, multi-window support, and platform installers (`.app` and `.dmg`, `.deb` and `.rpm`). There is no browser process, no local HTTP server, and no dependency on a browser being installed. The interface itself is drawn by the operating system's embedded webview component (WKWebView on macOS, WebKitGTK on Linux), the same component system applications use to render rich content; all interface assets are bundled inside the executable and loaded from it. The Rust core owns every capability that touches the machine (files, processes, SSH, model calls); the interface layer only draws and forwards intent.
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Shell | Tauri 2 | Native window and menus, multi-window for undocked panels, sidecar binaries, updater. Renders in WebKit (macOS, Linux) or WebView2 (Windows). |
+| Shell | Tauri 2 | Native window, menus, dialogs, multi-window for undocked panels, sidecar binaries, updater, platform installers. Interface drawn by the OS webview component: WKWebView on macOS, WebKitGTK on Linux. |
 | Core | Rust on `tokio` | All services in section 5. Compiled into the Tauri backend; also linked into a headless CLI for phase 0 and evals. |
 | IPC | Tauri commands and events, types generated with `specta` and `tauri-specta` | Request/response as commands; streams (model tokens, run output, artifacts) as events on a per-session channel. One definition in the `protocol` crate produces the TypeScript bindings. |
 | Model clients | `reqwest` with SSE streaming, hand-written adapters | Two adapters are a few hundred lines each and keep full control over tool-call parsing. No provider SDKs. |
@@ -200,6 +202,14 @@ The REPL subprocess for `exec.snippet` is the only stateful execution surface; s
 
 A target is where code runs. The session's editor, agent, policy engine, checkpoints, and transcripts are always local; the kernel, sandbox, venv, data, and runs are on the target.
 
+Target kinds, in order of default:
+
+| Kind | Description | Status |
+|---|---|---|
+| `local` | Everything on this machine. The default for every new session; nothing needs configuring. | First version |
+| `ssh` | A native environment on a remote Linux machine (Ubuntu or Fedora are the supported distributions) reached over SSH: `uv`, the tooling environment, and the session venv are installed in the user's home directory on that machine. A cluster login node is this same kind; the app does not need to know it is a cluster. | First version |
+| `ssh` + scheduler launcher | The same target with runs submitted through Slurm instead of started directly. | Planned extension, not first version |
+
 **Configuration**
 
 ```toml
@@ -217,7 +227,7 @@ The local target needs no configuration.
 
 **Connection.** The core uses the system OpenSSH client with connection multiplexing (`ControlMaster=auto`, `ControlPersist`, a control socket under `~/.analyst/ssh/`). One master connection per target per session; the kernel's stdio, each terminal, and each sync are channels on it. This respects the user's existing SSH configuration, keys, agent, and bastions without the app reimplementing any of it. A Rust SSH implementation can replace this later behind the same `Transport` trait if the CLI dependency becomes a problem (Windows lacks `ControlMaster`; there the core opens separate connections).
 
-**Bootstrap.** On first use of a target the core checks for `~/.analyst/bin/uv` and `~/.analyst/tooling/` on the host and creates them if missing: `uv` from its installer script or by copying the bundled binary for the host's architecture, then the tooling environment from the kernel wheel in the app bundle. Bootstrap is idempotent and version-checked, so an app upgrade refreshes the remote kernel on next connect.
+**Bootstrap.** On first use of a target the core checks for `~/.analyst/bin/uv` and `~/.analyst/tooling/` on the host and creates them if missing: `uv` from its installer script or by copying the bundled binary for the host's architecture, then the tooling environment from the kernel wheel in the app bundle. Nothing is installed outside the user's home directory and nothing needs root. Ubuntu and Fedora are the tested distributions; any Linux with a working `ssh`, `tar`, and `glibc` recent enough for `uv`'s Python builds should work. Bootstrap is idempotent and version-checked, so an app upgrade refreshes the remote kernel on next connect.
 
 **Repo sync model: local canonical, remote mirror.** The local repo is the source of truth for code. Before each run, and on demand, the core syncs the mirror:
 
