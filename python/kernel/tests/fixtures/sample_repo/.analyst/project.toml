@@ -1,0 +1,16 @@
+[project]
+scripts = ["scripts/**/*.py"]
+library = "analysis"
+out_dir = "out"
+data_dirs = ["data"]
+timeout_s = 120
+
+[contract]
+max_helper_lines = 15
+near_duplicate_threshold = 0.80
+min_tokens_for_similarity = 30
+math_required = ["analysis/models.py"]
+
+[contract.severity]
+"lib.near-duplicate" = "warn"
+"doc.docstring" = "error"

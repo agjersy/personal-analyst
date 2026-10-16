@@ -165,6 +165,16 @@ For `run.start` the kernel:
 
 The script sees a plain Python process. It needs no import from the app.
 
+**Implementation notes (kernel, phase 0).** These refine the contract above and are what the kernel actually does:
+
+- Each run is launched through a stdlib-only supervisor process (`python -m analyst_kernel._supervise`) started in its own session. The supervisor runs the sandbox-wrapped script, owns the timeout, and writes the final `status` line and `meta.json` itself, so bookkeeping survives a kernel restart. `RunMeta.pid` is the supervisor's pid, which is also the process-group id that `run.cancel` signals; the script's pid is in `<run_dir>/child.pid`; `<run_dir>/launch.json` records `timeout_s` and `network`.
+- `PYTHONPATH` for runs is `<dir containing analyst_mpl>:<inherited PYTHONPATH>:<root>`. The trailing root is required so that `python scripts/x.py` can `import analysis`.
+- `status` is `done:<code>` for any non-negative exit code, including failures of the script itself; `failed` is reserved for a process that could not be launched or died by an unexpected signal.
+- `eq.extract` reports tier `derived` whenever derivation succeeds, even if a `Math:` section also exists; `eq.check` verifies the declared expression when one exists, else the derived one. A malformed `Math:` section yields `tier: "declared", status: "error"`.
+- `exec.snippet` raises error 1003 on timeout and restarts the REPL on the next call. REPL and eq.check scratch directories live under `<runs_dir>/_repl`, `<runs_dir>/_eqcheck`, and `<root>/<out_dir>/_repl|_eqcheck`; `runs.list` and artifact discovery skip `_`-prefixed directories.
+- `cli.no-absolute-paths` also ignores docstrings. `lib.duplicate` counts statements recursively. `lint.run` maps syntax errors, `E9xx`, and `F821`-`F823` to `error`, everything else to `warn`.
+- `kernel.hello` rejects any `protocol_version` other than 1 with `-32602`. The kernel exits 0 on `kernel.shutdown` or on stdin EOF; detached runs continue.
+
 ### 1.5 Sandbox wrappers
 
 `--sandbox auto` picks the first available: `bwrap` (Linux, `bwrap` on PATH and user namespaces usable), `sandbox-exec` (macOS), else `limits`. The chosen value is reported in `kernel.hello` and in every RunMeta. The kernel builds the wrapper; this is the required policy:
