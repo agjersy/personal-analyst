@@ -180,10 +180,10 @@ class Checker:
             self._walk_calls(rel, child)
 
     def _check_call_literals(self, rel: str, call: ast.Call, name: str) -> None:
-        values: list[tuple[ast.expr, str | None]] = [(a, None) for a in call.args]
-        values += [(k.value, k.arg) for k in call.keywords]
-        for node, kwname in values:
-            problem = _literal_problem(node)
+        values: list[tuple[ast.expr, str | None, bool]] = [(a, None, i == 0) for i, a in enumerate(call.args)]
+        values += [(k.value, k.arg, False) for k in call.keywords]
+        for node, kwname, first in values:
+            problem = _literal_problem(node, first_positional=first)
             if problem is None:
                 continue
             where = f"keyword {kwname}" if kwname else "argument"
@@ -344,7 +344,14 @@ def _docstring_nodes(tree: ast.Module) -> list[ast.Expr]:
     return out
 
 
-def _literal_problem(node: ast.expr) -> str | None:
+def _literal_problem(node: ast.expr, *, first_positional: bool = True) -> str | None:
+    """Describe a hard-coded input literal, or return None if the literal is acceptable.
+
+    A string counts as a path when it contains a slash, or when it ends with a data
+    extension and is the first positional argument (the ``open("data.csv")`` shape).
+    A bare file name in a later position, such as ``os.path.join(out_dir, "summary.json")``,
+    is an output name inside a directory that came from elsewhere and is not flagged here.
+    """
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):
         inner = node.operand.value
         if isinstance(inner, (int, float)) and not isinstance(inner, bool):
@@ -358,7 +365,7 @@ def _literal_problem(node: ast.expr) -> str | None:
         return None
     if isinstance(v, (int, float)):
         return None if v in ALLOWED_NUMBERS else f"numeric literal {v!r}"
-    if isinstance(v, str) and ("/" in v or v.lower().endswith(DATA_EXTS)):
+    if isinstance(v, str) and ("/" in v or (first_positional and v.lower().endswith(DATA_EXTS))):
         return f"path literal {v!r}"
     return None
 

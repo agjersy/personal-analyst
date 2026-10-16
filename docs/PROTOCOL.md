@@ -303,7 +303,7 @@ Rule ids are stable strings. Defaults below; `[contract.severity]` overrides.
 | `cli.help-text` | error | An `add_argument` call lacks `help=`. |
 | `cli.main-function` | error | No top-level `def main(`. |
 | `cli.main-guard` | error | No `if __name__ == "__main__":`. |
-| `cli.option-for-every-input` | error | Inside `main` or the guard block, a string literal that looks like a path (contains `/`, or ends in a known data extension) or a numeric literal other than `0`, `1`, `-1`, `2`, `0.5` is passed as a call argument to a non-builtin function, and `add_argument(... default=...)` is not the enclosing call. |
+| `cli.option-for-every-input` | error | Inside `main` or the guard block, a string literal that looks like a path (contains `/` anywhere, or ends in a known data extension and is the first positional argument) or a numeric literal other than `0`, `1`, `-1`, `2`, `0.5` is passed as a call argument to a non-builtin function, and `add_argument(... default=...)` is not the enclosing call. A bare file name in a later position, such as `os.path.join(out_dir, "summary.json")`, is an output name and is not flagged. |
 | `cli.no-absolute-paths` | error | Any string literal starting with `/`, `~`, or `[A-Za-z]:\` outside `help=` strings. |
 | `lib.script-defines-logic` | error | A script defines a function not in `script_allowed_functions` unless it is private (`_` prefix), at most `max_helper_lines` long, and references no module in `numerical_modules`. |
 | `lib.duplicate` | error | Two functions (anywhere in scripts or library) have equal normalized-AST fingerprints and at least 3 statements. |

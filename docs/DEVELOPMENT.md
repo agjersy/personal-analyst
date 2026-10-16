@@ -57,7 +57,32 @@ Provider configuration lives in `~/.analyst/config.toml` (schema in PROTOCOL.md 
 
 ## Evaluation suite
 
-Each task under `evals/tasks/<name>/` has a `task.toml` (prompt, mode, checks) and a `fixture/` directory that becomes a fresh git repo for the run. Checks inspect only the resulting repo, the kernel's reports, and the transcript; none reference a model. Results go to `evals/results/`.
+Each task under `evals/tasks/<name>/` has a `task.toml` (prompt, mode, checks) and a `fixture/` directory that becomes a fresh git repo for the run (with `uv sync` for its `pyproject.toml`). Checks inspect only the resulting repo, the kernel's reports, and the transcript; none reference a model. Results go to `evals/results/`.
+
+```sh
+analyst eval run --model <provider>/<model> --tasks evals/tasks --auto            # all tasks
+analyst eval run --model <provider>/<model> --tasks evals/tasks --task parameter-sweep --auto
+```
+
+### Exercising the loop without a model
+
+`evals/fake_model_server.py` is a scripted OpenAI-compatible server (stdlib only). It answers the capability probe, plays the `parameter-sweep` task (three runs, no edits) and the `reuse-library-function` task (scope declaration, file creation, run), and declines everything else. It drives the real provider adapter, agent loop, policy engine, tools, kernel, graders, and scorecard, so it is the integration test for the whole headless stack and runs in CI.
+
+```sh
+python3 evals/fake_model_server.py --port 8765 &
+mkdir -p /tmp/analyst-home && cat > /tmp/analyst-home/config.toml <<'EOF'
+[defaults]
+model = "fake/scripted"
+[[providers]]
+name = "fake"
+kind = "openai-compatible"
+base_url = "http://127.0.0.1:8765/v1"
+EOF
+ANALYST_HOME=/tmp/analyst-home analyst eval run --model fake/scripted --tasks evals/tasks --task parameter-sweep --auto
+ANALYST_HOME=/tmp/analyst-home analyst eval run --model fake/scripted --tasks evals/tasks --task reuse-library-function --auto
+```
+
+Both must report PASS. The other two tasks fail by design against the scripted server; they need a real model.
 
 ## Conventions
 

@@ -119,6 +119,10 @@ def test_option_for_every_input_scope(kernel, repo: Path):
         "    count_rows(42)\n"
         "    count_rows(x=-3)\n"
         "    np.zeros(5)\n"
+        "    import os\n"
+        "    os.path.join(args.n, 'summary.json')\n"  # output name in a later position: fine
+        "    count_rows(args.n, name='report.csv')\n"  # keyword: fine
+        "    count_rows(args.n, 'nested/report.csv')\n"  # slash: flagged wherever it sits
         "    return 0\n\n"
         "def helper():\n    count_rows('untouched/outside/main.csv')\n\n"
         "if __name__ == '__main__':\n    count_rows('data.csv')\n    main()\n"
@@ -129,7 +133,8 @@ def test_option_for_every_input_scope(kernel, repo: Path):
         (12, "numeric literal 42"),
         (13, "numeric literal -3"),
         (14, "numeric literal 5"),
-        (21, "path literal 'data.csv'"),
+        (18, "path literal 'nested/report.csv'"),
+        (25, "path literal 'data.csv'"),
     ]
 
 

@@ -34,3 +34,24 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run pytest -q
+
+  loop-smoke:
+    runs-on: ubuntu-latest
+    needs: [rust, kernel]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v5
+      - run: cd python/kernel && uv sync
+      - run: cargo build -p analyst-cli
+      - name: Drive the agent loop with the scripted model server
+        env:
+          ANALYST_HOME: ${{ runner.temp }}/analyst-home
+        run: |
+          mkdir -p "$ANALYST_HOME"
+          printf '[defaults]\nmodel = "fake/scripted"\n[[providers]]\nname = "fake"\nkind = "openai-compatible"\nbase_url = "http://127.0.0.1:8765/v1"\n' > "$ANALYST_HOME/config.toml"
+          python3 evals/fake_model_server.py --port 8765 &
+          sleep 1
+          ./target/debug/analyst eval run --model fake/scripted --tasks evals/tasks --task parameter-sweep --auto --results "$ANALYST_HOME/results"
+          ./target/debug/analyst eval run --model fake/scripted --tasks evals/tasks --task reuse-library-function --auto --results "$ANALYST_HOME/results"
