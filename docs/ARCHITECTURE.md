@@ -1,6 +1,6 @@
 # Personal Analyst — Application Design and Architecture
 
-*Status: revised after first review (2026-10-16). Companion documents: [VISION.md](VISION.md), [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md).*
+*Status: revised after second review (2026-10-16); phase 0 decisions closed. Companion documents: [VISION.md](VISION.md), [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md).*
 
 This document specifies the architecture of the desktop application described in the vision. It is written to be built from. Decisions confirmed in review are marked as such; where a decision is still open, it states the recommendation and points to the open-questions document.
 
@@ -12,17 +12,19 @@ This document specifies the architecture of the desktop application described in
 | D2 | Analysis runtime | Python, one `uv`-managed virtual environment per session. `uv` only; no conda | Decided |
 | D3 | App tooling runtime | A hidden, app-owned Python environment per execution target for the kernel, SymPy, Ruff, and language servers | Recommended |
 | D4 | Model access | One internal interface, two wire adapters (OpenAI-compatible chat completions, Anthropic Messages). No model-specific code paths; capabilities probed, not hand-listed | Decided |
-| D5 | Execution targets | Every session binds to a target: local, or a remote host over SSH. Kernel protocol is transport-agnostic. Local repo is canonical; remote holds a synced mirror | Decided |
-| D6 | Sandbox | `bubblewrap` on Linux (local and remote), `sandbox-exec` on macOS, container backend optional, unsandboxed with a visible badge where neither exists | Open, see OQ-2 and OQ-3 |
-| D7 | Edit gating default | Review mode: agent pauses on each edit proposal until accepted | Open, see OQ-4 |
+| D5 | Execution targets | Every session binds to a target: local, or a remote host over SSH. Kernel protocol is transport-agnostic. Local repo is canonical; remote holds a synced mirror. Data is never synced; only rendered products (figures, logs, metadata, equation results) return to the UI | Decided |
+| D6 | Sandbox | `bubblewrap` on Linux (local and remote), `sandbox-exec` on macOS, network denied by default with per-run grants, container backend optional, unsandboxed with a visible badge where neither exists | Decided |
+| D7 | Edit gating default | Review mode with per-hunk accept and reject; protected paths and protected-region markers in the first version | Decided |
 | D8 | Equation source | AST-derived for pure expressions, declared-and-checked for everything else, LLM-explained marked unverified | Open, see OQ-5 |
-| D9 | Script contract | CLI options on every script and shared logic in the library package are hard rules with automated checks; remaining rules per OQ-6 | Partly decided |
+| D9 | Script contract | CLI options on every script and shared logic in the library package are hard rules; the remaining proposed rules ship as defaults with severities adjustable per repo | Decided |
 | D10 | Editor | CodeMirror 6 (Monaco as the fallback if a needed feature is missing) | Recommended |
 | D11 | Docking | `dockview` for in-window panels; Tauri `WebviewWindow` for undocked panels | Recommended |
 | D12 | LaTeX toolchain | Tectonic, downloaded on first use; system TeX used if present | Open, see OQ-10 |
 | D13 | Persistence | SQLite for indexes, JSONL for transcripts, TOML for config, git refs for checkpoints | Recommended |
 | D14 | External tools | MCP client (stdio and streamable HTTP) via the official Rust SDK; built-in tools share the same schema | Recommended |
 | D15 | Evaluation | Model-agnostic task suite with automatic graders; produces a scorecard per configured model; no model is privileged | Decided |
+| D16 | Platforms | macOS and Linux first, for both the desktop app and remote targets. Windows deferred to phase 4 | Decided |
+| D17 | Run launcher | Runs start directly on the target (local process or SSH login node) behind a launcher interface; a scheduler launcher (Slurm and similar) is a later addition, not a first-version feature | Decided |
 
 ## 2. System overview
 
@@ -125,7 +127,7 @@ Known cost: WebKitGTK on Linux is slower than Chromium for heavy canvases and la
 | Turn | One user message and everything the agent did in response: model calls, tool calls, proposals, runs. | transcript |
 | Proposal | A pending change set (file edits, package installs, commands) awaiting policy decision. | core, in memory + transcript |
 | Run | One execution of a script with arguments on a target, producing stdout, stderr, exit code, artifacts, and timing. Survives disconnects. | SQLite locally; `~/.analyst/runs/<id>/` on the target |
-| Artifact | A figure, table, or file produced by a run, with a sidecar metadata record. Pulled back to the local `out/` from remote targets. | `<repo>/out/` |
+| Artifact | A file produced by a run, with a sidecar metadata record. Rendered artifacts (figures, logs, run metadata) are pulled back to the local `out/` from remote targets; data artifacts (tables, arrays, derived datasets) stay on the target and are read on demand. | `<repo>/out/` locally; `<mirror>/out/` on the target |
 | Equation | A rendered mathematical statement bound to a code location, with a provenance tier and verification status. | computed, cached in SQLite |
 | Checkpoint | A snapshot of the local working tree taken before an agent turn that may change files. | git ref `refs/analyst/checkpoints/<id>` |
 | Skill | A markdown instruction set with trigger metadata, loaded into the agent's context on demand. | `.analyst/skills/`, `~/.analyst/skills/` |
@@ -181,6 +183,8 @@ The kernel is a long-lived process per session, launched from the tooling enviro
 | `run.start` | Execute a script with arguments inside the sandbox using the session interpreter. The run is detached (`setsid`) with output and status written to `~/.analyst/runs/<run-id>/` on the target. Returns a run id and streams `run.stdout`, `run.stderr`, `run.artifact`, and `run.done` notifications. |
 | `run.attach` | Resume streaming a run from recorded offsets after a kernel restart or a dropped connection. |
 | `run.cancel` | Terminate a run (process group). |
+| `out.list` | List a run's output directory on the target with sizes and types, without transferring anything. |
+| `out.read` | Return a bounded preview of a non-rendered artifact on the target (head of a CSV, shape and summary of an array, first rows of a table). The agent and the UI inspect data outputs through this call; the files themselves are not transferred. |
 | `exec.snippet` | Run a short snippet in a persistent REPL subprocess in the session venv, also sandboxed. For quick checks by the agent or the user. |
 | `eq.extract` | Equation extraction for a file or function (section 5.11). |
 | `eq.check` | Numeric consistency check of a declared equation against a function. |
@@ -223,9 +227,11 @@ The local target needs no configuration.
 
 Syncs are typically well under a second on a warm connection. The mirror is never edited in place; any file the agent or user changes is changed locally and re-synced.
 
-**Artifacts flow back.** A run writes to `out/` on the target. `run.artifact` events carry the target path and metadata; the core pulls each artifact into the local `out/` as it appears (eagerly for figures and small files, lazily on first view for large ones). The local `out/` is therefore a superset view across targets, and the figures panel does not care where a figure was produced.
+**Only rendered products come back.** A run writes to `out/` on the target. `run.artifact` events carry the target path and metadata. The core pulls back only what the UI renders: figure rasters and vectors with their sidecar metadata, the run's stdout and stderr (bounded), the run metadata JSON, and equation extraction and check results (which are computed on the target and transmitted as LaTeX plus a status, never as code execution on the local side). Everything else a run produces, such as tables, arrays, pickles, and derived datasets, stays on the target. The agent and the user inspect those through `out.list` and `out.read`, which return bounded previews without transferring files. The figures panel therefore does not care where a figure was produced, and no dataset is ever copied to the local machine by the app.
 
-**Data stays on the target.** Data directories are configured per target and are not synced. Scripts refer to data through CLI options whose defaults are repo-relative or come from `.analyst/project.toml` per-target overrides, so the same script runs locally against a sample and remotely against the full dataset without edits.
+**Data stays where it is generated.** Input data directories are configured per target and are never synced in either direction. Scripts refer to data through CLI options whose defaults are repo-relative or come from `.analyst/project.toml` per-target overrides, so the same script runs locally against a sample and remotely against the full dataset without edits. A user who wants a data artifact locally fetches it explicitly from the Outputs view; the app records that it did so but never does it on its own.
+
+**Run launcher.** The kernel starts runs through a `Launcher` interface with one implementation in the first version, `DirectLauncher`, which runs the script as a detached process on the target: on a cluster this means the login node, which is the accepted mode for now. The interface (`submit`, `status`, `cancel`, `output_paths`) is shaped so that a `SchedulerLauncher` for Slurm or similar can be added later without changing the kernel protocol or the agent loop; the only visible differences would be queue time in the run card and a per-target launcher setting.
 
 **Runs survive disconnects.** The kernel detaches each run and records stdout, stderr, exit status, and artifact list under `~/.analyst/runs/<run-id>/` on the target. If the SSH connection drops, the run continues. On reconnect, the core restarts the kernel if needed and calls `run.attach` to resume streaming from the last offsets. The run card shows "running, disconnected" rather than failing.
 
@@ -235,9 +241,11 @@ Syncs are typically well under a second on a warm connection. The mirror is neve
 
 **What the user sees.** The session tab shows the target name and connection state. When a remote target is unreachable, editing, chat planning, equation viewing, and reading past runs continue to work; run and package tools report the target as offline, and the agent is told so in its context.
 
-**Deferred alternative.** A "remote-primary" mode where the repo lives only on the host and the local side is a cache (editing over SFTP) is not in the first version. It would be the right model for repos that must not leave the host; see OQ-18.
+**Rejected alternative.** A "remote-primary" mode where the repo lives only on the host and the local side is a cache (editing over SFTP) was considered and rejected in favor of the simpler local-canonical mirror. The repo always lives locally and is mirrored to the host.
 
 ### 5.6 Sandbox (D6)
+
+**Decided:** OS-level isolation as below, network denied by default with per-run grants, container backend as an opt-in, resource-limits-only fallback badged in the UI on hosts that cannot isolate.
 
 Scripts run with least privilege:
 
@@ -255,7 +263,7 @@ Implementation per platform:
 - **Linux (local or remote):** `bubblewrap` (`bwrap`) with bind mounts matching the table above and `--unshare-net` unless granted. Fallback to Landlock plus `seccomp` if `bwrap` is unavailable; fallback to resource limits only, badged, if user namespaces are disabled.
 - **macOS:** `sandbox-exec` with a generated profile. It is deprecated in documentation but functional and used by other agent tools; the alternative is a container backend.
 - **Container backend (optional):** Podman or Docker with the venv and repo mounted. Slower start, strongest isolation.
-- **Windows (local):** no OS sandbox in the first version. Runs are marked "unsandboxed" in the UI. A Windows user with a Linux SSH target gets a sandbox by running remotely, which is expected to be the common case.
+- **Windows:** deferred with the platform (D16).
 
 The sandbox protects the host from the agent's code. It does not protect the repo from the agent's edits; that is the policy engine's job (5.8).
 
@@ -290,6 +298,7 @@ Large outputs (run logs, file contents) are never inlined past a size limit; the
 | `eq.extract`, `eq.check`, `contract.check`, `contract.similar`, `lint.run` | read |
 | `fig.get` (returns image for vision-capable models), `fig.list` | read |
 | `target.info` (name, state, sandbox level, data dirs) | read |
+| `out.list`, `out.read` (bounded previews of data outputs on the target) | read |
 | `fs.propose_edit` (unified diff or full file) | edit |
 | `fs.propose_create`, `fs.propose_delete` | edit |
 | `run.script`, `exec.snippet` | run |
@@ -337,6 +346,8 @@ Pausing on "ask" is a real pause: the model's partial turn is held, the user act
 **Capability baseline and fallback.** The loop targets models with native tool calling, streaming, and a context window of at least 32k tokens; this is the definition of a "performant model" for this product. Models that fail the tool-calling probe (5.10) can run through a text protocol (fenced JSON blocks) that the core parses. It is a degraded tier, flagged in the UI, not a supported mode for the eval suite.
 
 ### 5.8 Policy engine and edit gating (D7)
+
+**Decided:** `review` is the default gating mode, review is per hunk, and protected paths and protected-region markers are in the first version.
 
 Policy is declarative, lives in `.analyst/project.toml`, and can be overridden per session from the UI without editing the file.
 
@@ -461,7 +472,7 @@ The `Math:` docstring convention is deliberately dependency-free: the user's rep
 
 Capture happens in the script's process through a Matplotlib backend injected by the kernel (`MPLBACKEND=module://analyst_mpl`, module on `PYTHONPATH`). It overrides `show()` and wraps `savefig()`:
 
-- each figure is written to `out/figures/<script>/<run-id>/<name>.png` and `.svg` (optionally a pickle of the Figure for re-styling later)
+- each figure is written to `out/figures/<script>/<run-id>/<name>.png` and `.svg` (optionally a pickle of the Figure for re-styling later; the pickle stays on the target)
 - a sidecar JSON records script, arguments, run id, target, figure title, axes labels, and timestamp
 - the kernel watches the run's figure directory and emits `run.artifact` events; on a remote target the core pulls the files into the local `out/`
 
@@ -506,7 +517,7 @@ Checker rules:
 
 `contract.similar` exposes the same analysis on demand so the agent can run it before proposing an edit, and the UI offers "promote to library" as a refactor action that moves a function into `analysis/` and rewrites the call sites as a reviewable proposal.
 
-**Proposed rules (pending OQ-6)**
+**Default rules (accepted as defaults; severities adjustable per repo)**
 
 3. Outputs go to `out/` under a subdirectory named after the script. Figures are saved with descriptive names. A run metadata JSON is written with the arguments used.
 4. Random seeds are options with defaults.
@@ -623,9 +634,9 @@ Command palette and keybindings follow Zed's defaults where they apply. A Vim mo
 - MCP servers run as separate processes with their own configured permissions; their tools go through the same policy engine as built-ins.
 - Transcripts stay local. Export is explicit.
 
-## 9. Cross-platform
+## 9. Cross-platform (D16)
 
-Tauri builds for macOS, Linux, and Windows from one codebase. Sandboxing is available on macOS and Linux locally and on Linux remote hosts; Windows users are expected to run against a Linux target for sandboxed execution and get a clear badge otherwise. `uv`, `rg`, and Tectonic are bundled or fetched per platform. Windows uses the built-in OpenSSH client without connection multiplexing and the `tar` sync fallback when `rsync` is absent.
+macOS and Linux are the supported platforms through phase 3, for both the desktop app and remote targets. Tauri builds for Windows from the same codebase, but Windows is not tested or shipped until phase 4; when it is, it will use the built-in OpenSSH client without connection multiplexing, the `tar` sync fallback when `rsync` is absent, and no local sandbox. `uv`, `rg`, and Tectonic are bundled or fetched per platform.
 
 ## 10. Testing and evaluation (D15)
 
@@ -647,4 +658,4 @@ evals/                 task suite, graders, scorecard runner
 docs/
 ```
 
-Build order follows the roadmap in the vision document. Phase 0 produces `crates/core` (without UI glue), `python/kernel`, the local and SSH transports, and the CLI harness. That phase answers the riskiest questions (remote sync and reconnect behavior, sandbox behavior on real hosts, equation derivation coverage, and how the loop performs across several models from different providers) before any interface work.
+Build order follows the roadmap in the vision document. Phase 0 produces `crates/core` (without UI glue), `python/kernel`, the local and SSH transports, and the CLI harness. That phase answers the riskiest questions (remote sync and reconnect behavior on a login node, sandbox behavior on real hosts, equation derivation coverage, and how the loop performs across several models from different providers) before any interface work. All decisions that block phase 0 are closed; see OPEN-QUESTIONS.md for what remains open for later phases.

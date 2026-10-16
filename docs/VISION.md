@@ -1,6 +1,6 @@
 # Personal Analyst — Product Vision
 
-*Working name. Status: revised after first review (2026-10-16). Companion documents: [ARCHITECTURE.md](ARCHITECTURE.md), [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md).*
+*Working name. Status: revised after second review (2026-10-16); phase 0 decisions closed. Companion documents: [ARCHITECTURE.md](ARCHITECTURE.md), [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md).*
 
 ## 1. One line
 
@@ -34,6 +34,7 @@ The product keeps the workflow and removes the friction: one application, one ag
 4. **Three doors into the same loop.** Agent-driven, editor-driven, and terminal-driven work all see the same runs, figures, and equations. You can enter at whichever is fastest for the task at hand.
 5. **Model agnostic, local first.** Open-weight models through Ollama (or any OpenAI-compatible server) and frontier models through provider API keys, with the same agent loop and no model-specific code paths. The app assumes a performant model (native tool calling, a reasonable context window) and probes capabilities rather than maintaining a model list. The application itself has no cloud dependency and no telemetry. The only data that leaves the machine is what you send to the model provider you chose, and the app tells you which that is.
 6. **Contained by default, wherever it runs.** Code the agent runs is sandboxed: scoped filesystem, no network unless you grant it, bounded time and resources. Runs execute on the local machine or on a remote host over SSH, with the same controls and the same figure and run views either way.
+7. **Data stays where it is generated.** The app never copies datasets or derived data between machines. Only rendered products travel back to the interface: figures, logs, run metadata, and equation results. Data outputs are inspected in place.
 
 ## 4. Who it is for
 
@@ -68,7 +69,7 @@ These walkthroughs are the acceptance bar for the first usable version.
 | Pillar | First version | Later |
 |---|---|---|
 | Agent loop for analysis | Plan, propose, run, verify cycle. Review-gated edits. Script contract enforcement, including CLI-options and shared-logic checks. Run-only mode. Configurable policies and skills. No model-specific code paths. | Multi-model roles (planner, coder, reviewer). Parallel sub-tasks. |
-| Sandboxed Python runtime | Per-session venv via `uv`. Local or remote (SSH) execution target per session, with code synced out and figures synced back. OS-level sandbox on macOS and Linux, local and remote. Runs survive disconnects. | Container backend. Scheduler (Slurm) submission. Windows local sandbox. |
+| Sandboxed Python runtime | Per-session venv via `uv`. Local or remote (SSH) execution target per session, with code synced out and only rendered products synced back; data never moves. Runs start directly on the host or login node. OS-level sandbox on macOS and Linux, local and remote. Runs survive disconnects. | Container backend. Scheduler (Slurm) launcher. Windows. |
 | Editor | Code editor with Python diagnostics, inline diff review, protected regions, language server running on the target. | Vim mode. Multibuffer views. |
 | Figure viewer | Dockable and undockable tabs. Run history. Side-by-side comparison. Send a figure to a vision-capable model. | Interactive Plotly and Bokeh output. Figure annotation. |
 | Equation lens | LaTeX derived from pure-expression functions. Declared equations checked numerically against code. Click to jump to source. | Algorithm-level pseudocode views. Unit and dimension checks. |
@@ -100,4 +101,4 @@ Jupyter notebooks as a first-class format. Analysis languages other than Python 
 | 3. Extension and documents | MCP servers, skills, markdown and LaTeX preview and compile, report assembly. | An external engine is used in an analysis and a PDF report is produced from the app. |
 | 4. Polish | Undockable windows, keybindings and Vim mode, performance, Windows support. | Daily-driver quality. |
 
-See [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) for the decisions needed before phase 0 begins.
+macOS and Linux are the supported platforms through phase 3. All decisions that block phase 0 are closed; [OPEN-QUESTIONS.md](OPEN-QUESTIONS.md) lists what remains open for phase 1 and later, to be decided once phase 0 is complete.

@@ -1,130 +1,76 @@
-# Open Questions Before the Build
+# Decisions and Open Questions
 
-*Status: first review complete (2026-10-16). Resolved items are listed first; each remaining item names the phase that is blocked until it is answered. Companion documents: [VISION.md](VISION.md), [ARCHITECTURE.md](ARCHITECTURE.md).*
+*Status: phase 0 decisions closed (2026-10-16). Remaining items are deliberately left open until phase 0 is complete. Companion documents: [VISION.md](VISION.md), [ARCHITECTURE.md](ARCHITECTURE.md).*
 
-## Resolved in the first review
+## 1. Decision record
+
+Every question that blocked phase 0 has been answered. Numbering is preserved from the original list so earlier discussion still lines up.
 
 | Item | Decision | Where it landed |
 |---|---|---|
 | OQ-1 Desktop shell | Tauri 2 with a Rust core and a React renderer, for cross-platform support. | ARCHITECTURE.md section 3 |
+| OQ-2 Platforms and remote hosts | macOS and Linux are prioritized for both the desktop app and remote targets through phase 3. Windows is deferred to phase 4. Remote hosts are reached as login-node sessions. | ARCHITECTURE.md sections 5.5, 5.6, 9 |
+| OQ-3 Sandbox and network | OS-level isolation (`bubblewrap` on Linux, `sandbox-exec` on macOS), network denied by default with per-run grants and host allowlists, container backend as an opt-in, resource-limits-only fallback badged in the UI where isolation is unavailable. | ARCHITECTURE.md section 5.6 |
+| OQ-4 Edit gating | `review` is the default mode, review is per hunk, protected paths and protected-region markers are in the first version. Scope declaration applies in every mode. | ARCHITECTURE.md sections 5.7, 5.8 |
+| OQ-6 Script contract | Command-line options on every script and shared logic generalized into the library are hard rules with automated checks. The remaining proposed rules ship as defaults with per-repo severities. | ARCHITECTURE.md section 5.13 |
 | OQ-7 Environment tooling | `uv` only. No conda-only packages are planned. | ARCHITECTURE.md section 5.2 |
-| OQ-12 Model roster | None. The design and the evaluation suite are model agnostic: no model-specific code paths, capabilities probed at first use, a capability baseline (native tool calling, streaming, at least 32k context) defines a "performant model". | ARCHITECTURE.md sections 5.7, 5.10, 10 |
-| OQ-13 Where analysis runs | Remote execution over SSH is a first-version feature, designed in from phase 0. The local repo is canonical; remote targets hold a synced mirror; runs survive disconnects. | ARCHITECTURE.md section 5.5 |
-| OQ-6 (partial) Script contract | Two rules confirmed as the ones enforced manually today and made hard failures with automated checks: command-line options on every script, and shared logic generalized into the library rather than re-implemented across scripts. | ARCHITECTURE.md section 5.13 |
+| OQ-12 Model roster | None. The design and the evaluation suite are model agnostic. A capability baseline (native tool calling, streaming, at least 32k context) defines a performant model; capabilities are probed at first use. The text-protocol fallback ships as a flagged, degraded tier the evaluation suite does not certify. | ARCHITECTURE.md sections 5.7, 5.10, 10 |
+| OQ-13 Where analysis runs | Remote execution over SSH is a first-version feature designed in from phase 0. | ARCHITECTURE.md section 5.5 |
+| OQ-14 Data location | Data is never synced and stays where it is generated. Only rendered products (figures, logs, run metadata, equation results) are transmitted back to the UI. Data outputs are inspected in place through bounded previews. | ARCHITECTURE.md section 5.5, VISION.md principle 7 |
+| OQ-17 Scheduler integration | Login-node sessions for now, behind a launcher interface so a scheduler launcher (Slurm and similar) can be added later without changing the kernel protocol or agent loop. | ARCHITECTURE.md section 5.5 |
+| OQ-18 Remote repo model | The repo lives locally and is mirrored to the remote host before runs. The remote-primary alternative is rejected. | ARCHITECTURE.md section 5.5 |
 
-Items marked **Blocks phase 0** need an answer before the headless spike starts. The rest can be decided while phase 0 is underway.
+## 2. Open for phase 1 and later
 
-## OQ-2. Primary operating system and remote hosts — Blocks phase 0
+These are intentionally parked until phase 0 (the headless spike) is complete, because its results will inform them. None blocks phase 0.
 
-Tauri covers all three desktop platforms, but the local sandbox, the terminal, and the SSH sync path still differ per OS, and the remote side matters as much now that remote execution is in scope.
-
-**Decide.** Which OS do you work on daily? What are the remote hosts (Linux distribution, whether `bubblewrap` or unprivileged user namespaces are available, whether `rsync` is installed)? The spec can bootstrap `uv` and the kernel on a host, but cannot install `bubblewrap` without root.
-
-## OQ-3. Sandbox strength and network policy — Blocks phase 0
-
-**Options.** (a) OS-level isolation (`bubblewrap`, `sandbox-exec`) with path scoping and network denied by default. (b) Container backend (Podman or Docker) for every run. (c) Path scoping and resource limits only, no isolation.
-
-**Recommendation.** (a) as the default with (b) as an opt-in backend. (c) is the automatic fallback on hosts where (a) is unavailable, badged in the UI, and should not be the design target.
-
-**Decide.** Do your analysis scripts need network access routinely (downloading datasets, calling services)? If so the default should be "ask" rather than "deny", and the allowlist model matters more. Is an unsandboxed fallback on shared remote hosts acceptable, given the SSH account boundary?
-
-## OQ-4. Edit gating default — Blocks phase 0
-
-**Options.** (a) `review`: pause on every proposal. (b) `auto-new-files`. (c) `auto` with scope declaration and checkpoints as the safety net.
-
-**Recommendation.** (a) by default, because unwanted edits are a stated pain point, with a one-click session toggle to (b) or (c) when you trust a task. Scope declaration and protected paths apply in every mode.
-
-**Decide.** Is per-hunk review the right granularity, or do you want per-file accept and reject only? Should protected-region comment markers exist in the first version?
-
-## OQ-5. Equation lens: how much derivation, how much declaration — Blocks phase 2, informs phase 0
+### OQ-5. Equation lens: how much derivation, how much declaration — Blocks phase 2
 
 **Options.** (a) Derive from the AST only; show nothing for functions that cannot be derived. (b) Declared `Math:` docstrings with numeric verification, plus derivation where possible. (c) LLM-generated LaTeX only.
 
-**Recommendation.** (b). Derivation is ground truth but covers only pure expression functions. Declared-and-checked covers algorithms and gives a real verification signal. (c) alone reproduces the trust problem you are trying to solve.
+**Recommendation.** (b). Derivation is ground truth but covers only pure expression functions. Declared-and-checked covers algorithms and gives a real verification signal. (c) alone reproduces the trust problem the product exists to solve.
 
-**Decide.** Is a `Math:` docstring section in SymPy syntax an acceptable convention to require in your repos? Would you rather write LaTeX directly and accept that it cannot be verified numerically? Which of your existing modules would be the first test case for derivation coverage?
+**Decide after phase 0.** Phase 0 will measure derivation coverage on a real module. Then: is a `Math:` docstring section in SymPy syntax an acceptable convention to require? Would you rather write LaTeX directly and accept that it cannot be verified numerically?
 
-## OQ-6. Script contract details — Blocks phase 0 (partly resolved)
+### OQ-8. Session scope — Blocks phase 1
 
-The two rules you enforce manually today are now hard rules with automated checks (ARCHITECTURE.md section 5.13). The remaining proposed rules (output layout, seeds as options, `Math:` sections, units in docstrings) are guesses.
+The spec defines a session as one repo plus one target plus one environment plus conversations.
 
-**Decide.**
-- Mark up the proposed rules: which are right, which are missing (naming, logging, data loading conventions, testing), and which should be warnings versus hard failures.
-- For the generalization rule: may a script define any helper functions at all, or must every function live in the library? The spec allows small private helpers under a size limit.
-- For duplicate detection: is a near-duplicate warning at 80 percent token similarity the right starting threshold, and should the agent be blocked from proposing an edit that introduces one, or only warned?
-- Is `analysis/` the right default name for the library package, and do you keep one library per repo or a shared library across repos (see OQ-8)?
+**Decide.** Do you ever need one session to span multiple repos (for example a shared analysis library plus a project repo)? Is one environment per repo the right default? This also decides whether the library package in the contract is per repo or shared.
 
-## OQ-7. Environment tooling — Resolved
+### OQ-9. Notebooks — Informs phase 1
 
-`uv` only; no conda-only packages planned. Kept here so the numbering stays stable.
-
-## OQ-8. Session scope — Blocks phase 1
-
-The spec defines a session as one repo plus one environment plus conversations.
-
-**Decide.** Do you ever need one session to span multiple repos (for example a shared analysis library plus a project repo)? Is one environment per repo the right default, or do you reuse environments across repos?
-
-## OQ-9. Notebooks — Informs phase 1
-
-The vision excludes Jupyter as a first-class format because your workflow is script-based.
+The vision excludes Jupyter as a first-class format because the workflow is script-based.
 
 **Decide.** Confirm exclusion, or ask for read-only rendering of existing `.ipynb` files so legacy work is viewable.
 
-## OQ-10. LaTeX toolchain — Blocks phase 3
+### OQ-10. LaTeX toolchain — Blocks phase 3
 
 **Options.** (a) Tectonic, fetched on first use, self-contained. (b) Use the system TeX Live or MacTeX if present. (c) Both, system first.
 
-**Recommendation.** (c). Tectonic guarantees a working compile on a fresh machine; your existing TeX installation may have packages and fonts you rely on.
+**Recommendation.** (c).
 
 **Decide.** Do you have a TeX installation you want used?
 
-## OQ-11. Figures: static only or interactive — Informs phase 1
+### OQ-11. Figures: static only or interactive — Informs phase 1
 
 **Recommendation.** Matplotlib static capture (PNG and SVG) in the first version. Interactive Plotly or Bokeh HTML in a webview tab later.
 
 **Decide.** How often do you use interactive plots today? If routinely, the webview tab should be in phase 1.
 
-## OQ-12. Model roster — Resolved, one follow-up
+### OQ-15. Keybindings and editor feel — Informs phase 1
 
-The design is model agnostic and the evaluation suite targets a capability baseline rather than a list. One follow-up remains.
+**Decide.** Zed defaults, VS Code defaults, or Vim mode from the first version? Any Zed features you use daily beyond the agent panel (multibuffers, outline) that should be in scope?
 
-**Decide.** Should the text-protocol fallback for models that fail the tool-calling probe exist at all in the first version? It is cheap to build but it is a degraded path that the evaluation suite will not certify. The alternative is to refuse such models with a clear message.
+### OQ-16. Name and licensing — Informs nothing technical
 
-## OQ-13. Where analysis runs — Resolved, see OQ-17 and OQ-18
+**Decide.** Working name for the product, and whether it will be open source (affects library choices with copyleft licenses).
 
-Remote execution over SSH is designed in (ARCHITECTURE.md section 5.5). Two follow-ups are split out below.
+## 3. Questions phase 0 is expected to raise
 
-## OQ-14. Data location and size — Blocks phase 0
+Not decisions yet; things the spike should produce evidence on before the phase 1 questions are answered.
 
-With remote execution in scope, data location decides the sync model. The spec keeps data on the target and never syncs it.
-
-**Decide.** Where does your data live on each host (inside the repo, a shared data directory, a NAS, object storage)? Typical sizes? Does any data need to move between local and remote targets, or is it always consumed where it lives? Does a derived-data directory need to sync back alongside figures?
-
-## OQ-17. Scheduler integration on remote hosts — Informs phase 0
-
-The spec runs scripts directly on the SSH host as detached processes. On a cluster, runs may need to be submitted through a scheduler such as Slurm, which changes how runs start, how output is collected, and how long they take to begin.
-
-**Decide.** Are your remote hosts standalone machines (workstation, GPU box) or scheduler-managed clusters? If a scheduler is involved, should the first version support it, or is a login-node run acceptable to start?
-
-## OQ-18. Remote repo model — Informs phase 0
-
-The spec makes the local repo canonical and mirrors it to the host before each run. This is simple and keeps editing, checkpoints, and diffs fast and offline-capable. It assumes the code may live on your local machine.
-
-**Decide.** Is there any repo or data-adjacent code that must not leave the remote host? If so, a "remote-primary" mode (repo lives only on the host, edited over SFTP) is needed, and it is a materially different design that should be chosen before phase 0 rather than retrofitted.
-
-## OQ-15. Keybindings and editor feel — Informs phase 1
-
-**Decide.** Zed defaults, VS Code defaults, or Vim mode from the first version? Any Zed features you use daily beyond the agent panel (multibuffers, outline, collaboration) that should be in scope?
-
-## OQ-16. Name and licensing — Informs nothing technical
-
-**Decide.** Working name for the product, and whether it will be open source (affects library choices with copyleft licenses, such as some PDF and terminal components).
-
----
-
-## Suggested order of decisions
-
-1. OQ-2, OQ-3, OQ-14, OQ-17, OQ-18 together: the remote hosts, where data lives, and how runs are contained and submitted.
-2. OQ-6, OQ-4, OQ-12: what phase 0 must prove.
-3. OQ-8, OQ-11, OQ-15: shape of phase 1.
-4. OQ-5, OQ-10, OQ-9, OQ-16: can trail the spike.
+- Equation derivation coverage on an existing analysis module (feeds OQ-5).
+- Sync and reconnect latency on your actual remote hosts, and whether `bubblewrap` is available there.
+- Near-duplicate detection precision at the default 80 percent threshold on an existing repo: too many false positives means the threshold or the normalization needs tuning before the agent is blocked on it.
+- Which capability-baseline models from the providers you configure pass the evaluation suite, and where the loop's prompts need tuning.
