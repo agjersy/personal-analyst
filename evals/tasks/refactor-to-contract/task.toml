@@ -1,0 +1,56 @@
+[task]
+name = "refactor-to-contract"
+mode = "build"
+timeout_s = 900
+max_steps = 40
+prompt = """
+scripts/summarize.py works but violates this repository's script contract: it hard-codes an absolute data path, has no command-line interface, and defines numerical functions inside the script (one of which, rmse, already exists in analysis/stats.py).
+
+Bring it into compliance without changing what it computes or plots:
+- read the data path from a --data option defaulting to data/measurements.csv, and expose any other inputs as options with help text
+- move the linear fit into analysis/fit.py as a documented function with a Math: section, and reuse analysis.stats.rmse instead of redefining it
+- keep the printed summary and the figure
+Run `scripts/summarize.py --help` and then the script itself to confirm it works. Do not touch any file other than scripts/summarize.py and analysis/fit.py.
+"""
+
+[fixture]
+dir = "fixture"
+
+[[checks]]
+kind = "contract_clean"
+
+[[checks]]
+kind = "file_matches"
+path = "scripts/summarize.py"
+regex = "argparse"
+
+[[checks]]
+kind = "file_matches"
+path = "scripts/summarize.py"
+regex = "analysis\\.stats|from analysis\\.stats import|from analysis import stats"
+
+[[checks]]
+kind = "file_matches"
+path = "analysis/fit.py"
+regex = "def \\w+\\("
+
+[[checks]]
+kind = "run_succeeds"
+script = "scripts/summarize.py"
+args = ["--help"]
+
+[[checks]]
+kind = "run_succeeds"
+script = "scripts/summarize.py"
+args = []
+
+[[checks]]
+kind = "artifact_exists"
+glob = "out/summarize/*/figures/*.png"
+min_count = 1
+
+[[checks]]
+kind = "no_new_duplicates"
+
+[[checks]]
+kind = "edits_within_scope"

@@ -1,0 +1,12 @@
+/target
+**/__pycache__/
+*.pyc
+.venv/
+/python/kernel/.venv/
+/python/kernel/dist/
+/python/kernel/*.egg-info/
+.pytest_cache/
+.ruff_cache/
+/evals/results/
+/out/
+.analyst/env.sh

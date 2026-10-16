@@ -1,0 +1,5 @@
+[project]
+name = "eval-fixture"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "scipy>=1.11", "matplotlib>=3.8"]

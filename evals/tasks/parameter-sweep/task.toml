@@ -1,0 +1,27 @@
+[task]
+name = "parameter-sweep"
+mode = "run"
+timeout_s = 600
+max_steps = 20
+prompt = """
+Using the existing tool scripts/decay_sim.py, run it for tau values 0.5, 1.0, and 2.0 with the default amplitude, and report the half-life for each in a short table. Do not modify any code.
+"""
+
+[fixture]
+dir = "fixture"
+
+[[checks]]
+kind = "no_edits"
+
+[[checks]]
+kind = "runs_at_least"
+script = "scripts/decay_sim.py"
+count = 3
+
+[[checks]]
+kind = "artifact_exists"
+glob = "out/decay_sim/*/figures/*.png"
+min_count = 3
+
+[[checks]]
+kind = "contract_clean"

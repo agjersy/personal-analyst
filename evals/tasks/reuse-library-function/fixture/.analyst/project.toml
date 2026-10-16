@@ -1,0 +1,18 @@
+[project]
+scripts = ["scripts/**/*.py"]
+library = "analysis"
+out_dir = "out"
+data_dirs = ["data"]
+timeout_s = 300
+
+[contract]
+math_required = ["analysis/fitting*.py", "analysis/models*.py"]
+
+[policy]
+edits = "auto"
+runs = "auto"
+packages = "deny"
+shell = "deny"
+network = "deny"
+git = "deny"
+max_steps = 40

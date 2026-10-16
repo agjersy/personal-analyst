@@ -1,0 +1,59 @@
+[task]
+name = "fit-double-exponential"
+mode = "build"
+timeout_s = 900
+max_steps = 40
+prompt = """
+The file data/decay.csv has columns t and y containing a decay curve that is well described by a sum of two exponentials.
+
+1. Put the model function `double_exp(t, A, tau1, B, tau2)` in analysis/fitting.py with a `Math:` docstring section declaring the equation, plus a `fit_double_exp(t, y, p0=None)` function that fits it with scipy.optimize.curve_fit and returns the parameters and their standard errors.
+2. Reuse `analysis.io.load_xy` to read the data; do not write another CSV loader.
+3. Write scripts/fit_decay.py as a thin command-line tool (argparse, help text on every option, defaults for everything, --data pointing at data/decay.csv by default, --seed) that fits the data, prints the fitted parameters with uncertainties, and shows two figures: the data with the fitted curve, and the residuals.
+4. Run the script once to confirm it works.
+"""
+
+[fixture]
+dir = "fixture"
+
+[[checks]]
+kind = "contract_clean"
+
+[[checks]]
+kind = "script_exists"
+path = "scripts/fit_decay.py"
+
+[[checks]]
+kind = "file_matches"
+path = "analysis/fitting.py"
+regex = "def double_exp\\("
+
+[[checks]]
+kind = "file_matches"
+path = "scripts/fit_decay.py"
+regex = "load_xy"
+
+[[checks]]
+kind = "run_succeeds"
+script = "scripts/fit_decay.py"
+args = ["--help"]
+
+[[checks]]
+kind = "run_succeeds"
+script = "scripts/fit_decay.py"
+args = []
+
+[[checks]]
+kind = "artifact_exists"
+glob = "out/fit_decay/*/figures/*.png"
+min_count = 2
+
+[[checks]]
+kind = "eq_verified"
+path = "analysis/fitting.py"
+function = "double_exp"
+
+[[checks]]
+kind = "no_new_duplicates"
+
+[[checks]]
+kind = "edits_within_scope"

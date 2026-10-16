@@ -1,0 +1,51 @@
+[task]
+name = "reuse-library-function"
+mode = "build"
+timeout_s = 600
+max_steps = 30
+prompt = """
+Write scripts/smooth_signal.py: a command-line tool that loads data/signal.csv (columns t and v), smooths v with a centered moving average of a configurable odd window length (default 11), prints the RMS of the difference between raw and smoothed values, and shows one figure with the raw and smoothed signals overlaid.
+
+Every input must be an option with help text and a default. The repository library already provides what you need for loading and smoothing; use it rather than re-implementing it. Run the script once to confirm it works.
+"""
+
+[fixture]
+dir = "fixture"
+
+[[checks]]
+kind = "contract_clean"
+
+[[checks]]
+kind = "script_exists"
+path = "scripts/smooth_signal.py"
+
+[[checks]]
+kind = "file_matches"
+path = "scripts/smooth_signal.py"
+regex = "moving_average"
+
+[[checks]]
+kind = "file_matches"
+path = "scripts/smooth_signal.py"
+regex = "load_series"
+
+[[checks]]
+kind = "run_succeeds"
+script = "scripts/smooth_signal.py"
+args = ["--help"]
+
+[[checks]]
+kind = "run_succeeds"
+script = "scripts/smooth_signal.py"
+args = ["--window", "21"]
+
+[[checks]]
+kind = "artifact_exists"
+glob = "out/smooth_signal/*/figures/*.png"
+min_count = 1
+
+[[checks]]
+kind = "no_new_duplicates"
+
+[[checks]]
+kind = "edits_within_scope"
