@@ -1,6 +1,6 @@
 # Decisions and Open Questions
 
-*Status: phase 0 decisions closed (2026-10-16). Remaining items are deliberately left open until phase 0 is complete. Companion documents: [VISION.md](VISION.md), [ARCHITECTURE.md](ARCHITECTURE.md).*
+*Status: phase 0 built and reviewed; phase 1 decisions closed (2026-10-26). Remaining items are for phase 2 and later. Companion documents: [VISION.md](VISION.md), [ARCHITECTURE.md](ARCHITECTURE.md).*
 
 ## 1. Decision record
 
@@ -19,10 +19,15 @@ Every question that blocked phase 0 has been answered. Numbering is preserved fr
 | OQ-14 Data location | Data is never synced and stays where it is generated. Only rendered products (figures, logs, run metadata, equation results) are transmitted back to the UI. Data outputs are inspected in place through bounded previews. | ARCHITECTURE.md section 5.5, VISION.md principle 7 |
 | OQ-17 Remote runner and scheduler | Default is fully local. The default remote runner is a native environment on a remote Linux machine (Ubuntu or Fedora) over SSH; a cluster login node is the same target kind. Slurm scheduler integration is a planned later extension behind the launcher interface. | ARCHITECTURE.md section 5.5 |
 | OQ-18 Remote repo model | The repo lives locally and is mirrored to the remote host before runs. The remote-primary alternative is rejected. | ARCHITECTURE.md section 5.5 |
+| OQ-8 Session scope | One repo per session: one repo, one target, one venv, several conversations. A library shared by several repos is installed into each repo's venv as a package dependency, so the contract's library rule still applies per repo. | ARCHITECTURE.md sections 4, 5.1 |
+| OQ-9 Notebooks | Excluded entirely from the first desktop version. | VISION.md section 9 |
+| OQ-11 Figures | Static Matplotlib capture (PNG and SVG) in phase 1. Interactive Plotly or Bokeh output is a later phase. | ARCHITECTURE.md section 5.12 |
+| OQ-15 Editor feel | Zed's keymap and command palette conventions. Vim mode deferred to phase 4. | ARCHITECTURE.md section 6 |
+| OQ-16 Name and licensing | The product keeps the name "Personal Analyst": binary `analyst`, config in `~/.analyst`, bundle identifier derived from it. The repository stays private for now with the license decided later; only permissively licensed dependencies (no GPL or AGPL) so both options stay open. | this record |
 
-## 2. Open for phase 1 and later
+## 2. Open for phase 2 and later
 
-These are intentionally parked until phase 0 (the headless spike) is complete, because its results will inform them. None blocks phase 0.
+Nothing below blocks phase 1.
 
 ### OQ-5. Equation lens: how much derivation, how much declaration — Blocks phase 2
 
@@ -32,18 +37,6 @@ These are intentionally parked until phase 0 (the headless spike) is complete, b
 
 **Decide after phase 0.** Phase 0 will measure derivation coverage on a real module. Then: is a `Math:` docstring section in SymPy syntax an acceptable convention to require? Would you rather write LaTeX directly and accept that it cannot be verified numerically?
 
-### OQ-8. Session scope — Blocks phase 1
-
-The spec defines a session as one repo plus one target plus one environment plus conversations.
-
-**Decide.** Do you ever need one session to span multiple repos (for example a shared analysis library plus a project repo)? Is one environment per repo the right default? This also decides whether the library package in the contract is per repo or shared.
-
-### OQ-9. Notebooks — Informs phase 1
-
-The vision excludes Jupyter as a first-class format because the workflow is script-based.
-
-**Decide.** Confirm exclusion, or ask for read-only rendering of existing `.ipynb` files so legacy work is viewable.
-
 ### OQ-10. LaTeX toolchain — Blocks phase 3
 
 **Options.** (a) Tectonic, fetched on first use, self-contained. (b) Use the system TeX Live or MacTeX if present. (c) Both, system first.
@@ -52,23 +45,9 @@ The vision excludes Jupyter as a first-class format because the workflow is scri
 
 **Decide.** Do you have a TeX installation you want used?
 
-### OQ-11. Figures: static only or interactive — Informs phase 1
+## 3. Evidence to gather before phase 2
 
-**Recommendation.** Matplotlib static capture (PNG and SVG) in the first version. Interactive Plotly or Bokeh HTML in a webview tab later.
-
-**Decide.** How often do you use interactive plots today? If routinely, the webview tab should be in phase 1.
-
-### OQ-15. Keybindings and editor feel — Informs phase 1
-
-**Decide.** Zed defaults, VS Code defaults, or Vim mode from the first version? Any Zed features you use daily beyond the agent panel (multibuffers, outline) that should be in scope?
-
-### OQ-16. Name and licensing — Informs nothing technical
-
-**Decide.** Working name for the product, and whether it will be open source (affects library choices with copyleft licenses).
-
-## 3. Questions phase 0 is expected to raise
-
-Not decisions yet; things the spike should produce evidence on before the phase 1 questions are answered.
+Not decisions; things the phase 1 workbench should produce evidence on before OQ-5 and OQ-10 are answered.
 
 - Equation derivation coverage on an existing analysis module (feeds OQ-5).
 - Sync and reconnect latency on your actual remote hosts, and whether `bubblewrap` is available there.

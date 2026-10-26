@@ -25,6 +25,7 @@ This document specifies the architecture of the desktop application described in
 | D15 | Evaluation | Model-agnostic task suite with automatic graders; produces a scorecard per configured model; no model is privileged | Decided |
 | D16 | Platforms | macOS and Linux first, for both the desktop app and remote targets. Windows deferred to phase 4 | Decided |
 | D17 | Run launcher | Runs start directly on the target (local process, remote Linux machine, or cluster login node) behind a launcher interface; a Slurm scheduler launcher is a planned later extension, not a first-version feature | Decided |
+| D18 | Name and license | "Personal Analyst": binary `analyst`, config `~/.analyst`, bundle id `dev.personal-analyst.app`. Private for now; permissively licensed dependencies only so the license choice stays open | Decided |
 
 ## 2. System overview
 
@@ -121,7 +122,7 @@ Known cost: WebKitGTK on Linux is slower than Chromium for heavy canvases and la
 |---|---|---|
 | Workspace | The app-level state: provider config, targets, global skills, global MCP servers, list of sessions. | `~/.analyst/` |
 | Target | Where runs execute: `local`, or an SSH host with a remote root directory. Holds its own tooling env, venvs, and run records. | `~/.analyst/config.toml` |
-| Session | A repo path + a target + an environment + one or more conversations + layout + run history. One tab per session. | `~/.analyst/sessions/<id>/` |
+| Session | Exactly one repo + one target + one environment + one or more conversations + layout + run history. One tab per session. A library shared across repos is a package dependency of each repo, not a second repo in the session. | `~/.analyst/sessions/<id>/` |
 | Repo | A git repository on the local disk containing analysis code and the committed project config in `.analyst/`. Canonical for code. | user's filesystem |
 | Mirror | The synced copy of the repo on a remote target. Never edited directly; rebuilt from the local repo before runs. | `<remote_root>/<repo>` on the target |
 | Environment | A Python virtual environment managed by `uv`, living on the target. | `<repo>/.venv` or `<mirror>/.venv` |
@@ -496,7 +497,7 @@ Figures panel:
 - undock into its own OS window (section 6)
 - "send to agent" attaches the image to the next message for vision-capable models, or the sidecar metadata for others
 
-Interactive figures (Plotly, Bokeh HTML) are rendered in a webview tab in a later phase (OQ-11).
+Phase 1 captures static Matplotlib output only. Interactive figures (Plotly, Bokeh HTML) are a later phase.
 
 ### 5.13 Script contract and checker (D9)
 
@@ -603,7 +604,7 @@ Panels and their primary interactions:
 
 Docking uses `dockview`: any panel can be dragged into any dock group or into a floating group. Undocking into a separate OS window creates a second Tauri `WebviewWindow` hosting that panel, subscribed to the same session's event channel; this is what makes a figures-only window on a second monitor work.
 
-Command palette and keybindings follow Zed's defaults where they apply. A Vim mode via CodeMirror's `@replit/codemirror-vim` is a later phase.
+Command palette and keybindings follow Zed's defaults (decided). A Vim mode via CodeMirror's `@replit/codemirror-vim` is a phase 4 item.
 
 ## 7. Storage layout
 
