@@ -240,12 +240,16 @@ def rlimit_prologue(rlimit_as: int | None, rlimit_nofile: int | None) -> str:
 
 def bwrap_argv(spec: SandboxSpec, cmd: list[str], bwrap: str = "bwrap") -> list[str]:
     home = Path(os.path.realpath(spec.home or _home()))
+    # Mounts apply in order: every tmpfs that hides a tree (HOME, /tmp) must come before the
+    # binds that re-expose specific directories, or a repo or runs directory under /tmp would
+    # be shadowed by the fresh /tmp and the run would fail with "Can't chdir".
     argv: list[str] = [bwrap, "--ro-bind", "/", "/", "--tmpfs", str(home)]
+    if home != Path("/tmp"):
+        argv += ["--tmpfs", "/tmp"]
     for d in spec.read_only_dirs():
         argv += ["--ro-bind", str(d), str(d)]
     for d in spec.writable_dirs():
         argv += ["--bind", str(d), str(d)]
-    argv += ["--tmpfs", "/tmp"]
     if not spec.network:
         argv.append("--unshare-net")
     argv += [

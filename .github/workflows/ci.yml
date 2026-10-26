@@ -95,3 +95,40 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p analyst-desktop
       - run: cargo test -p analyst-desktop
+
+  desktop-smoke:
+    runs-on: ubuntu-latest
+    needs: [desktop-frontend, desktop-tauri, kernel]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux webview dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev patchelf webkit2gtk-driver xvfb bubblewrap
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - run: cargo install tauri-driver --locked
+      - run: cd python/kernel && uv sync
+      - run: cd apps/desktop && pnpm install --frozen-lockfile && pnpm build
+      - run: cargo build -p analyst-desktop --features custom-protocol
+      - name: Prepare a repo with the sweep fixture
+        run: |
+          cargo build -p analyst-cli
+          ./target/debug/analyst init "$RUNNER_TEMP/demo"
+          cp evals/tasks/parameter-sweep/fixture/analysis/models.py "$RUNNER_TEMP/demo/analysis/"
+          cp evals/tasks/parameter-sweep/fixture/scripts/decay_sim.py "$RUNNER_TEMP/demo/scripts/"
+      - run: apps/desktop/smoke/run.sh "$RUNNER_TEMP/demo" "$RUNNER_TEMP/smoke-out"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-smoke
+          path: ${{ runner.temp }}/smoke-out

@@ -84,7 +84,35 @@ ANALYST_HOME=/tmp/analyst-home analyst eval run --model fake/scripted --tasks ev
 
 Both must report PASS. The other two tasks fail by design against the scripted server; they need a real model.
 
+## Desktop app (phase 1)
+
+The workbench is a Tauri 2 application: `apps/desktop/src-tauri` (Rust, thin commands over `analyst_core::service`) and `apps/desktop/src` (React). The IPC contract is [IPC.md](IPC.md); TypeScript types are generated from `crates/protocol` by `cargo test -p analyst-protocol` into `apps/desktop/src/ipc/generated/`.
+
+```sh
+cd apps/desktop
+pnpm install
+pnpm dev              # renderer in a browser at http://localhost:5173 against the in-memory MockBackend
+pnpm typecheck && pnpm lint && pnpm test && pnpm build
+pnpm test:e2e         # Playwright, headless Chromium, mock mode
+
+# the real app (needs the Python kernel set up as above)
+cargo tauri dev                                   # from apps/desktop/src-tauri; starts Vite and opens the window
+cargo build -p analyst-desktop --features custom-protocol   # debug binary with the built frontend embedded
+cargo tauri build                                 # installers (.app/.dmg, .deb/.rpm/.AppImage)
+```
+
+Environment for the real app: `ANALYST_HOME` (default `~/.analyst`), `ANALYST_TOOLING_PYTHON` (a dev checkout auto-detects `python/kernel/.venv`), `ANALYST_SANDBOX` (override the sandbox kind for all runs), `RUST_LOG`.
+
+Linux build dependencies: `libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev patchelf`. macOS needs Xcode command line tools only.
+
+### Headless smoke test of the real app
+
+`apps/desktop/smoke/run.sh <repo>` launches the real binary under Xvfb through `tauri-driver` and WebKitWebDriver, creates a session on the given repo, waits for the kernel, runs `scripts/decay_sim.py` from the Scripts form, waits for exit 0 and for its figure to render, and saves a screenshot. Requirements: `cargo install tauri-driver`, `apt-get install webkit2gtk-driver xvfb`, the embedded-frontend build above, and a repo with a venv (the `evals/tasks/parameter-sweep/fixture` files in a repo made by `analyst init` work).
+
 ## Troubleshooting
+
+**A bubblewrap run fails with `Can't chdir to ...`** when the repo or the runs directory lives under `/tmp`: fixed by mounting the fresh `/tmp` before the specific binds; rebuild the kernel environment if you see it on an older checkout.
+
 
 **`sandbox-exec: execvp() of '.../.venv/bin/python' failed: Operation not permitted` (macOS)**, or a run that dies immediately under `bwrap` on Linux. The sandbox hides the home directory, and the venv's `python` is a symlink to a base interpreter that `uv` keeps under `~/.local/share/uv/python`. The kernel resolves that symlink (and `home =` in the venv's `pyvenv.cfg`) and allows the base installation read-only, and it lists every path in both its given and canonical form (`/tmp` is `/private/tmp` on macOS). If a run is still denied:
 

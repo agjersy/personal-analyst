@@ -140,6 +140,8 @@ def test_bwrap_argv(tmp_path: Path):
     # tmpfs HOME comes before the ro-binds of things that may live under HOME
     assert argv.index("--tmpfs") < argv.index(str(s.root))
     assert "--tmpfs /tmp" in text
+    # the /tmp tmpfs precedes every specific bind so repos or run dirs under /tmp stay visible
+    assert argv.index("/tmp") < argv.index(str(s.root))
     assert "--unshare-net" in argv
     for flag in ("--die-with-parent", "--new-session", "--unshare-pid"):
         assert flag in argv

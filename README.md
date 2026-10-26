@@ -6,7 +6,9 @@ Model agnostic (open-weight models via Ollama or any OpenAI-compatible server, f
 
 ## Status
 
-**Phase 0 (headless core) is built.** There is no desktop UI yet. What exists:
+**Phase 0 (headless core) and phase 1 (desktop workbench) are built.** What exists:
+
+- Desktop app (Tauri 2, macOS and Linux): session tabs, project and scripts sidebar with run forms, library and runs views, CodeMirror editor with diagnostics and per-hunk proposal review, agent chat with tool, proposal, and run cards, figures panel with run history and comparison, equations panel, packages panel, terminal, run output and diagnostics docks, Zed keymap subset and command palette
 
 - `analyst` CLI: `init`, `index`, `check`, `run`, `eq`, `env`, `target`, `chat`, `eval`
 - Rust core: policy engine with review-gated edits and scope declaration, OpenAI-compatible and Anthropic streaming adapters with capability probing, kernel client over local stdio or SSH, repo sync and remote bootstrap, git checkpoints, agent loop with plan/build/run modes
