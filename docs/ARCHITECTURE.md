@@ -100,7 +100,7 @@ What "native" means here: the app is a single native executable with native wind
 |---|---|---|
 | Shell | Tauri 2 | Native window, menus, dialogs, multi-window for undocked panels, sidecar binaries, updater, platform installers. Interface drawn by the OS webview component: WKWebView on macOS, WebKitGTK on Linux. |
 | Core | Rust on `tokio` | All services in section 5. Compiled into the Tauri backend; also linked into a headless CLI for phase 0 and evals. |
-| IPC | Tauri commands and events, types generated with `specta` and `tauri-specta` | Request/response as commands; streams (model tokens, run output, artifacts) as events on a per-session channel. One definition in the `protocol` crate produces the TypeScript bindings. |
+| IPC | Tauri commands and per-session channels; types exported with `ts-rs` | Request/response as commands; streams (model tokens, run output, artifacts) as events on a per-session channel. The `protocol` crate's types produce the TypeScript bindings. The contract is [IPC.md](IPC.md). |
 | Model clients | `reqwest` with SSE streaming, hand-written adapters | Two adapters are a few hundred lines each and keep full control over tool-call parsing. No provider SDKs. |
 | MCP | `rmcp` (official Rust SDK), client role | stdio and streamable HTTP transports. |
 | Storage | `rusqlite`, `toml`, JSONL | See section 7. |
