@@ -2,8 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum ProposalKind {
     Edit,
@@ -24,7 +25,7 @@ impl ProposalKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum Decision {
     Accept,
@@ -38,7 +39,7 @@ impl Decision {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum DecidedBy {
     User,
@@ -46,13 +47,15 @@ pub enum DecidedBy {
 }
 
 /// One transcript line. `ts` is RFC 3339 UTC.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[ts(rename = "TranscriptEvent")]
 pub enum Event {
     User {
         ts: String,
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         attachments: Option<Vec<String>>,
     },
     Assistant {
@@ -63,14 +66,17 @@ pub enum Event {
         ts: String,
         id: String,
         name: String,
+        #[ts(type = "unknown")]
         arguments: Value,
     },
     ToolResult {
         ts: String,
         id: String,
         ok: bool,
+        #[ts(type = "any")]
         result: Value,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         truncated: Option<bool>,
     },
     Proposal {
@@ -79,6 +85,7 @@ pub enum Event {
         kind: ProposalKind,
         summary: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
         diff: Option<String>,
     },
     Decision {

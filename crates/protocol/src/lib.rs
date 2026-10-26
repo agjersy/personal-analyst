@@ -7,6 +7,7 @@
 //! - [`transcript`]: conversation transcript events (PROTOCOL 5).
 //! - [`model`]: model provider types, `ModelEvent`, `ChatRequest` (PROTOCOL 4).
 //! - [`evals`]: evaluation task and scorecard types (PROTOCOL 8).
+//! - [`ui`]: desktop IPC types with TypeScript export (docs/IPC.md).
 
 pub mod config;
 pub mod evals;
@@ -15,6 +16,7 @@ pub mod model;
 pub mod rpc;
 pub mod session;
 pub mod transcript;
+pub mod ui;
 
 /// The protocol version both sides must agree on (`kernel.hello`).
 pub const PROTOCOL_VERSION: u32 = 1;

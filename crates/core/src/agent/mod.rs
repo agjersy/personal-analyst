@@ -5,7 +5,9 @@
 pub mod approver;
 pub mod prompt;
 
-pub use approver::{ApprovalRequest, Approver, AutoApprover, RecordingApprover, RejectAllApprover};
+pub use approver::{
+    ApprovalDecision, ApprovalRequest, Approver, AutoApprover, RecordingApprover, RejectAllApprover,
+};
 
 use crate::checkpoint;
 use crate::policy::{Decision as PolicyDecision, Policy};
@@ -132,6 +134,42 @@ impl Agent {
 
     pub fn history(&self) -> &[Message] {
         &self.history
+    }
+
+    /// Make the history well-formed again after a turn was aborted mid-way (the desktop app
+    /// cancels turns by dropping the future): every assistant tool call needs a result, and the
+    /// history must end with an assistant message before the next user message.
+    pub fn recover_after_cancel(&mut self) {
+        if let Some(last) = self.history.last() {
+            if last.role == Role::Assistant {
+                let pending: Vec<String> = last
+                    .content
+                    .iter()
+                    .filter_map(|p| match p {
+                        ContentPart::ToolCall { id, .. } => Some(id.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if !pending.is_empty() {
+                    let parts = pending
+                        .into_iter()
+                        .map(|id| ContentPart::ToolResult {
+                            tool_call_id: id,
+                            content: "{\"error\":\"cancelled by the user\"}".into(),
+                            is_error: true,
+                        })
+                        .collect();
+                    self.history.push(Message {
+                        role: Role::User,
+                        content: parts,
+                    });
+                }
+            }
+        }
+        if !matches!(self.history.last(), Some(m) if m.role == Role::Assistant) {
+            self.history
+                .push(Message::assistant_text("(turn cancelled by the user)"));
+        }
     }
 
     pub fn pinned_facts(&self) -> &[String] {
@@ -518,6 +556,7 @@ impl Agent {
             }
         }
         let pk = proposal_kind_for(name);
+        let mut user_modified = false;
         match eval.decision {
             PolicyDecision::Deny => {
                 if is_edit {
@@ -553,7 +592,8 @@ impl Agent {
                     reason: eval.reason.clone(),
                     proposal: proposal.clone(),
                 };
-                let ok = self.approver.approve(&req).await;
+                let decision = self.approver.decide(&req).await;
+                let ok = decision.accepted();
                 if is_edit
                     || class == Some(ToolClass::Package)
                     || class == Some(ToolClass::Shell)
@@ -579,17 +619,32 @@ impl Agent {
                         by: DecidedBy::User,
                     });
                 }
-                if !ok {
-                    return self.ctx.cap_result(
-                        id,
-                        Err(crate::tools::ToolError::new(format!(
-                            "rejected by the user ({})",
-                            eval.reason
-                        ))),
-                    );
-                }
-                if is_edit {
-                    summary.unwanted_edits += 1;
+                match decision {
+                    ApprovalDecision::Reject { reason } => {
+                        let why = match reason {
+                            Some(r) if !r.trim().is_empty() => {
+                                format!("{}; user says: {r}", eval.reason)
+                            }
+                            _ => eval.reason.clone(),
+                        };
+                        return self.ctx.cap_result(
+                            id,
+                            Err(crate::tools::ToolError::new(format!(
+                                "rejected by the user ({why})"
+                            ))),
+                        );
+                    }
+                    ApprovalDecision::Accept { content } => {
+                        if is_edit {
+                            summary.unwanted_edits += 1;
+                        }
+                        if let (Some(c), Some(p)) = (content, proposal.as_mut()) {
+                            if p.kind != ProposalKind::Delete {
+                                p.new_content = Some(c);
+                                user_modified = true;
+                            }
+                        }
+                    }
                 }
             }
             PolicyDecision::Allow => {
@@ -606,7 +661,17 @@ impl Agent {
         if let Some(p) = proposal {
             let r = proposals::apply(&self.ctx.repo, &p).map(|_| {
                 edited.push(p.path.clone());
-                json!({"applied": true, "path": p.path, "summary": p.summary})
+                if user_modified {
+                    json!({
+                        "applied": true,
+                        "path": p.path,
+                        "summary": p.summary,
+                        "user_modified": true,
+                        "note": "the user edited your proposal before accepting it; the file on disk is their version, so re-read it before editing it again"
+                    })
+                } else {
+                    json!({"applied": true, "path": p.path, "summary": p.summary})
+                }
             });
             return self.ctx.cap_result(id, r.map_err(Into::into));
         }

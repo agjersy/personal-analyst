@@ -367,90 +367,19 @@ fn print_diagnostics(diags: &[Diagnostic]) -> usize {
     errors
 }
 
-const TEMPLATE_PROJECT_TOML: &str = r#"[project]
-scripts = ["scripts/**/*.py"]
-library = "analysis"
-out_dir = "out"
-data_dirs = ["data"]
-timeout_s = 600
-
-[contract]
-max_helper_lines = 15
-near_duplicate_threshold = 0.80
-min_tokens_for_similarity = 30
-math_required = []
-
-[policy]
-edits = "review"
-runs = "auto"
-packages = "ask"
-shell = "ask"
-network = "deny"
-git = "ask"
-protected = []
-max_steps = 40
-"#;
-
 fn cmd_init(path: Option<PathBuf>) -> Result<()> {
     let root = path.unwrap_or(std::env::current_dir()?);
-    std::fs::create_dir_all(&root)?;
-    let name = root
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "analysis-repo".into());
-    let files: Vec<(&str, String)> = vec![
-        (".analyst/project.toml", TEMPLATE_PROJECT_TOML.into()),
-        ("analysis/__init__.py", "\"\"\"Shared analysis library: documented, reusable functions.\"\"\"\n".into()),
-        ("scripts/.gitkeep", String::new()),
-        ("data/.gitkeep", String::new()),
-        ("out/.gitkeep", String::new()),
-        ("notes.md", format!("# {name}\n\nNotes and decisions.\n")),
-        (".gitignore", "out/\n!out/.gitkeep\n.venv/\n__pycache__/\n*.pyc\n.analyst/env.sh\n.ruff_cache/\n".into()),
-        (
-            "pyproject.toml",
-            format!(
-                "[project]\nname = \"{}\"\nversion = \"0.1.0\"\nrequires-python = \">=3.11\"\ndependencies = [\"numpy\", \"scipy\", \"matplotlib\", \"pandas\"]\n\n[tool.ruff]\nline-length = 100\n",
-                name.replace(' ', "-").to_lowercase()
-            ),
-        ),
-    ];
-    for (rel, content) in files {
-        let p = root.join(rel);
-        if p.exists() {
-            println!("keep   {rel}");
-            continue;
-        }
-        if let Some(parent) = p.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&p, content)?;
+    let report = analyst_core::init::init_repo(&root, &analyst_core::init::InitOptions::default())?;
+    for rel in &report.kept {
+        println!("keep   {rel}");
+    }
+    for rel in &report.created {
         println!("create {rel}");
     }
-    let has_uv = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).any(|d| d.join("uv").is_file()))
-        .unwrap_or(false);
-    if has_uv {
-        for args in [vec!["venv", "-q"], vec!["sync", "-q"]] {
-            let st = std::process::Command::new("uv")
-                .args(&args)
-                .current_dir(&root)
-                .status()?;
-            println!(
-                "uv {} -> {}",
-                args.join(" "),
-                if st.success() { "ok" } else { "failed" }
-            );
-        }
-    } else {
-        println!("uv not found on PATH; skipped `uv venv` and `uv sync`");
+    for line in &report.log {
+        println!("{line}");
     }
-    if !root.join(".git").exists() {
-        analyst_core::checkpoint::git(&root, &["init", "-q"], None)?;
-        analyst_core::checkpoint::git(&root, &["add", "-A"], None)?;
-        analyst_core::checkpoint::git(&root, &["commit", "-q", "-m", "analyst init"], None)?;
-        println!("git init + initial commit");
-    }
-    println!("ready: {}", root.display());
+    println!("ready: {}", report.root.display());
     Ok(())
 }
 

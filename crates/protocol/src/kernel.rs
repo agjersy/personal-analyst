@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use ts_rs::TS;
 
 // ---- lifecycle ----
 
@@ -47,7 +48,7 @@ pub struct EnvInfo {
     pub uv: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct PackageInfo {
     pub name: String,
     pub version: String,
@@ -72,7 +73,7 @@ pub struct ScriptsIndexResult {
     pub scripts: Vec<ScriptInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct ScriptInfo {
     pub path: String,
     pub name: String,
@@ -84,19 +85,21 @@ pub struct ScriptInfo {
     pub options: Vec<OptionInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct OptionInfo {
     pub flags: Vec<String>,
     pub dest: String,
     #[serde(default)]
     pub r#type: Option<String>,
     #[serde(default)]
+    #[ts(type = "any")]
     pub default: Value,
     #[serde(default)]
     pub help: Option<String>,
     #[serde(default)]
     pub required: bool,
     #[serde(default)]
+    #[ts(type = "any[] | null")]
     pub choices: Option<Vec<Value>>,
     #[serde(default)]
     pub action: Option<String>,
@@ -113,13 +116,13 @@ pub struct LibIndexResult {
     pub functions: Vec<LibFunction>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct Location {
     pub path: String,
     pub line: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct LibFunction {
     pub module: String,
     pub qualname: String,
@@ -187,7 +190,7 @@ pub struct RunsListResult {
     pub runs: Vec<RunMeta>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum RunStatus {
     Running,
@@ -216,7 +219,7 @@ impl std::fmt::Display for RunStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct RunMeta {
     pub run_id: String,
     pub script: String,
@@ -235,7 +238,7 @@ pub struct RunMeta {
     pub host: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum ArtifactKind {
     Figure,
@@ -269,18 +272,19 @@ impl ArtifactKind {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct Artifact {
     pub kind: ArtifactKind,
     pub path: String,
     pub size: u64,
     pub created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub sidecar: Option<FigureSidecar>,
     pub rendered: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct AxesInfo {
     #[serde(default)]
     pub title: Option<String>,
@@ -290,7 +294,7 @@ pub struct AxesInfo {
     pub ylabel: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct FigureSidecar {
     pub run_id: String,
     pub script: String,
@@ -396,7 +400,7 @@ pub struct OutListParams {
     pub run_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct OutEntry {
     pub path: String,
     pub size: u64,
@@ -404,7 +408,7 @@ pub struct OutEntry {
     pub mtime: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct OutListResult {
     pub entries: Vec<OutEntry>,
 }
@@ -416,12 +420,13 @@ pub struct OutReadParams {
     pub max_bytes: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct OutReadResult {
     pub kind: ArtifactKind,
     pub preview: String,
     pub truncated: bool,
     #[serde(default)]
+    #[ts(type = "object | null")]
     pub summary: Option<Value>,
 }
 
@@ -439,7 +444,7 @@ pub struct EqExtractResult {
     pub equations: Vec<Equation>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum EquationTier {
     Derived,
@@ -448,7 +453,7 @@ pub enum EquationTier {
     None,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum EquationStatus {
     Ok,
@@ -456,7 +461,7 @@ pub enum EquationStatus {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct Equation {
     pub function: String,
     pub qualname: String,
@@ -483,7 +488,7 @@ pub struct EqCheckParams {
     pub ranges: Option<BTreeMap<String, [f64; 2]>>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum EqCheckStatus {
     Agree,
@@ -491,14 +496,16 @@ pub enum EqCheckStatus {
     Unavailable,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct Counterexample {
+    #[ts(type = "Record<string, number>")]
     pub inputs: BTreeMap<String, f64>,
     pub expected: f64,
     pub actual: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(rename = "EqCheck")]
 pub struct EqCheckResult {
     pub status: EqCheckStatus,
     pub trials: u64,
@@ -525,14 +532,14 @@ pub struct DiagnosticsResult {
     pub diagnostics: Vec<Diagnostic>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Error,
     Warn,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct Diagnostic {
     pub path: String,
     pub line: u64,
@@ -557,7 +564,7 @@ pub struct SimilarResult {
     pub pairs: Vec<SimilarPair>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
 #[serde(rename_all = "kebab-case")]
 pub enum SimilarKind {
     Duplicate,
@@ -565,14 +572,14 @@ pub enum SimilarKind {
     UnusedTwin,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct FunctionRef {
     pub path: String,
     pub qualname: String,
     pub line: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct SimilarPair {
     pub kind: SimilarKind,
     pub score: f64,

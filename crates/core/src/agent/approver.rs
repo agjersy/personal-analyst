@@ -13,9 +13,32 @@ pub struct ApprovalRequest {
     pub proposal: Option<Proposal>,
 }
 
+/// The outcome of an approval. `Accept { content: Some(..) }` carries the file content the user
+/// wants written instead of the proposed one (per-hunk review in the desktop app).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ApprovalDecision {
+    Accept { content: Option<String> },
+    Reject { reason: Option<String> },
+}
+
+impl ApprovalDecision {
+    pub fn accepted(&self) -> bool {
+        matches!(self, ApprovalDecision::Accept { .. })
+    }
+}
+
 #[async_trait]
 pub trait Approver: Send + Sync {
     async fn approve(&self, req: &ApprovalRequest) -> bool;
+
+    /// Richer decision used by the agent loop; the default delegates to [`Approver::approve`].
+    async fn decide(&self, req: &ApprovalRequest) -> ApprovalDecision {
+        if self.approve(req).await {
+            ApprovalDecision::Accept { content: None }
+        } else {
+            ApprovalDecision::Reject { reason: None }
+        }
+    }
 }
 
 /// Accepts everything (evals, `--auto`-style runs).
