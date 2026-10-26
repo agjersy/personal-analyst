@@ -55,3 +55,43 @@ jobs:
           sleep 1
           ./target/debug/analyst eval run --model fake/scripted --tasks evals/tasks --task parameter-sweep --auto --results "$ANALYST_HOME/results"
           ./target/debug/analyst eval run --model fake/scripted --tasks evals/tasks --task reuse-library-function --auto --results "$ANALYST_HOME/results"
+
+  desktop-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+  desktop-tauri:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux webview dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p analyst-desktop
+      - run: cargo test -p analyst-desktop
