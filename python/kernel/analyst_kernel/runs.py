@@ -195,6 +195,7 @@ class RunManager:
         return SandboxSpec(
             root=self.root,
             venv=venv_of(Path(self.python)),
+            python=Path(self.python),
             run_dir=run_dir,
             out_dir=out_abs,
             data_dirs=[resolve_data_dir(self.root, d) for d in self.config.data_dirs],

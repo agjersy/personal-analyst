@@ -41,6 +41,10 @@ struct Cli {
     /// Verbose logging (-v info, -vv debug).
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
+    /// Sandbox kind for runs on the chosen target: auto, bwrap, sandbox-exec, limits, none.
+    /// Overrides the target's setting; use `limits` to diagnose a denial from the OS sandbox.
+    #[arg(long, global = true, value_name = "KIND")]
+    sandbox: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -166,6 +170,7 @@ struct App {
     repo: PathBuf,
     global: GlobalConfig,
     project: ProjectConfig,
+    sandbox: Option<String>,
 }
 
 impl App {
@@ -181,6 +186,7 @@ impl App {
             repo,
             global,
             project,
+            sandbox: cli.sandbox.clone(),
         })
     }
 
@@ -217,7 +223,7 @@ impl App {
                         root: self.repo.to_string_lossy().to_string(),
                         runs_dir: runs.to_string_lossy().to_string(),
                         out_dir: Some(eff.out_dir),
-                        sandbox: Some("auto".into()),
+                        sandbox: Some(self.sandbox.clone().unwrap_or_else(|| "auto".into())),
                     },
                 ))
             }
@@ -236,7 +242,7 @@ impl App {
                         root: mirror.clone(),
                         runs_dir: "~/.analyst/runs".into(),
                         out_dir: Some(eff.out_dir),
-                        sandbox: Some(sandbox.clone()),
+                        sandbox: Some(self.sandbox.clone().unwrap_or_else(|| sandbox.clone())),
                     },
                 })
             }

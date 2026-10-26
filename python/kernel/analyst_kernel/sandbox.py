@@ -30,6 +30,7 @@ class SandboxSpec:
     tooling_dir: Path | None = None
     derived_dir: Path | None = None
     home: Path | None = None
+    python: Path | None = None  # session interpreter; its base installation is made readable
     network: bool = False
     rlimit_as: int = DEFAULT_RLIMIT_AS
     rlimit_nofile: int = DEFAULT_RLIMIT_NOFILE
@@ -38,19 +39,21 @@ class SandboxSpec:
         dirs: list[Path] = [self.root]
         if self.venv is not None:
             dirs.append(self.venv)
+        if self.python is not None:
+            dirs += interpreter_dirs(self.python)
         if self.tooling_dir is not None and self.tooling_dir.exists():
             dirs.append(self.tooling_dir)
         for d in self.data_dirs:
             if d.exists():
                 dirs.append(d)
-        return _dedupe(dirs)
+        return _dedupe(_with_realpaths(dirs))
 
     def writable_dirs(self) -> list[Path]:
         dirs = [self.out_dir]
         if self.derived_dir is not None and self.derived_dir.exists():
             dirs.append(self.derived_dir)
         dirs.append(self.run_dir)
-        return _dedupe(dirs)
+        return _dedupe(_with_realpaths(dirs))
 
 
 @dataclass
@@ -65,6 +68,44 @@ class SandboxCommand:
         if self.rlimit_as is None and self.rlimit_nofile is None:
             return None
         return limits_preexec(self.rlimit_as, self.rlimit_nofile)
+
+
+def _with_realpaths(paths: list[Path]) -> list[Path]:
+    """Each path followed by its canonical form when that differs.
+
+    Sandbox rules are matched against canonical paths (``/tmp`` is ``/private/tmp`` on macOS,
+    and a repo may live behind a symlink), so both spellings are listed.
+    """
+    out: list[Path] = []
+    for p in paths:
+        out.append(p)
+        real = Path(os.path.realpath(p))
+        if real != p:
+            out.append(real)
+    return out
+
+
+def interpreter_dirs(python: Path) -> list[Path]:
+    """Directories the session interpreter needs besides its venv.
+
+    A venv's ``bin/python`` is a symlink to a base installation, typically under the home
+    directory (``~/.local/share/uv/python/<build>/bin/python3.x`` for ``uv``), which the
+    sandbox otherwise hides. The base installation is found two ways and both are returned:
+    by resolving the symlink, and from ``home =`` in the venv's ``pyvenv.cfg``.
+    """
+    prefixes: list[Path] = []
+    real = Path(os.path.realpath(python))
+    prefixes.append(real.parent.parent if real.parent.name == "bin" else real.parent)
+    cfg = python.parent.parent / "pyvenv.cfg"
+    try:
+        for line in cfg.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "home" and value.strip():
+                base_bin = Path(os.path.realpath(value.strip()))
+                prefixes.append(base_bin.parent if base_bin.name == "bin" else base_bin)
+    except OSError:
+        pass
+    return [p for p in _dedupe(prefixes) if p.exists() and p != Path("/")]
 
 
 def _dedupe(paths: list[Path]) -> list[Path]:
@@ -198,7 +239,7 @@ def rlimit_prologue(rlimit_as: int | None, rlimit_nofile: int | None) -> str:
 
 
 def bwrap_argv(spec: SandboxSpec, cmd: list[str], bwrap: str = "bwrap") -> list[str]:
-    home = spec.home or _home()
+    home = Path(os.path.realpath(spec.home or _home()))
     argv: list[str] = [bwrap, "--ro-bind", "/", "/", "--tmpfs", str(home)]
     for d in spec.read_only_dirs():
         argv += ["--ro-bind", str(d), str(d)]
@@ -230,7 +271,7 @@ def _q(path: Path | str) -> str:
 
 
 def sandbox_exec_profile(spec: SandboxSpec) -> str:
-    home = spec.home or _home()
+    home = Path(os.path.realpath(spec.home or _home()))
     lines = [
         "(version 1)",
         "(deny default)",

@@ -84,6 +84,16 @@ ANALYST_HOME=/tmp/analyst-home analyst eval run --model fake/scripted --tasks ev
 
 Both must report PASS. The other two tasks fail by design against the scripted server; they need a real model.
 
+## Troubleshooting
+
+**`sandbox-exec: execvp() of '.../.venv/bin/python' failed: Operation not permitted` (macOS)**, or a run that dies immediately under `bwrap` on Linux. The sandbox hides the home directory, and the venv's `python` is a symlink to a base interpreter that `uv` keeps under `~/.local/share/uv/python`. The kernel resolves that symlink (and `home =` in the venv's `pyvenv.cfg`) and allows the base installation read-only, and it lists every path in both its given and canonical form (`/tmp` is `/private/tmp` on macOS). If a run is still denied:
+
+1. Run it with `--sandbox limits` to confirm the script itself works: `analyst --sandbox limits run scripts/x.py`. This applies resource limits only and is badged as such.
+2. Run with `-vv` and look at the kernel's stderr for the generated profile or `bwrap` argv, and check which path the denied operation touches.
+3. Add that path to `data_dirs` in `.analyst/project.toml` if it is data, or report it if it is part of the interpreter or a system location.
+
+**Matplotlib cannot find a font cache or config.** Runs set `MPLCONFIGDIR` inside the run directory, which is writable; the user's `~/.matplotlib` is intentionally hidden.
+
 ## Conventions
 
 - Rust: `cargo fmt`, clippy clean, no `unwrap()` on I/O paths in library code.

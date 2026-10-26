@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,13 @@ def spec(tmp_path: Path, network=False) -> SandboxSpec:
     root = tmp_path / "repo"
     (root / "data" / "derived").mkdir(parents=True)
     venv = root / ".venv"
-    venv.mkdir()
+    (venv / "bin").mkdir(parents=True)
+    # a uv-style venv: bin/python is a symlink into a base installation under HOME
+    base = tmp_path / "home" / ".local" / "share" / "uv" / "python" / "cpython-3.12"
+    (base / "bin").mkdir(parents=True)
+    (base / "bin" / "python3.12").write_text("#!/bin/sh\n")
+    (venv / "bin" / "python").symlink_to(base / "bin" / "python3.12")
+    (venv / "pyvenv.cfg").write_text(f"home = {base / 'bin'}\nversion = 3.12.0\n")
     data = tmp_path / "shared"
     data.mkdir()
     tooling = tmp_path / "tooling"
@@ -33,7 +40,39 @@ def spec(tmp_path: Path, network=False) -> SandboxSpec:
     return SandboxSpec(
         root=root, venv=venv, run_dir=run_dir, out_dir=out, data_dirs=[data, tmp_path / "missing"],
         tooling_dir=tooling, derived_dir=root / "data" / "derived", home=tmp_path / "home", network=network,
+        python=venv / "bin" / "python",
     )
+
+
+def test_interpreter_base_is_readable_despite_hidden_home(tmp_path: Path):
+    s = spec(tmp_path)
+    base = tmp_path / "home" / ".local" / "share" / "uv" / "python" / "cpython-3.12"
+    assert base in s.read_only_dirs()
+    assert f"--ro-bind {base} {base}" in " ".join(bwrap_argv(s, ["/py"]))
+    prof = sandbox_exec_profile(s)
+    deny = prof.index(f'(deny file-read* (subpath "{tmp_path / "home"}"))')
+    assert prof.index(f'(allow file-read* (subpath "{base}"))') > deny
+
+
+def test_pyvenv_cfg_home_is_used_when_python_is_not_a_symlink(tmp_path: Path):
+    base = tmp_path / "base"
+    (base / "bin").mkdir(parents=True)
+    venv = tmp_path / "v"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").write_text("")
+    (venv / "pyvenv.cfg").write_text(f"home = {base / 'bin'}\n")
+    assert sandbox.interpreter_dirs(venv / "bin" / "python") == [venv, base]
+
+
+def test_symlinked_paths_are_listed_canonically(tmp_path: Path):
+    s = spec(tmp_path)
+    link = tmp_path / "link-to-repo"
+    link.symlink_to(s.root)
+    s.root = link
+    ro = s.read_only_dirs()
+    assert link in ro and Path(os.path.realpath(link)) in ro
+    prof = sandbox_exec_profile(s)
+    assert f'(subpath "{link}")' in prof and f'(subpath "{os.path.realpath(link)}")' in prof
 
 
 def test_bwrap_argv(tmp_path: Path):
