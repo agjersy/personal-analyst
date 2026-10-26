@@ -88,8 +88,14 @@ Both must report PASS. The other two tasks fail by design against the scripted s
 
 **`sandbox-exec: execvp() of '.../.venv/bin/python' failed: Operation not permitted` (macOS)**, or a run that dies immediately under `bwrap` on Linux. The sandbox hides the home directory, and the venv's `python` is a symlink to a base interpreter that `uv` keeps under `~/.local/share/uv/python`. The kernel resolves that symlink (and `home =` in the venv's `pyvenv.cfg`) and allows the base installation read-only, and it lists every path in both its given and canonical form (`/tmp` is `/private/tmp` on macOS). If a run is still denied:
 
+The macOS sandbox also checks `file-read-metadata` on every directory along a path during lookup, so the profile grants metadata (stat only) on the chain of ancestors between your home directory and each allowed subtree; without that, an allow rule for a subtree under home has no effect. If a run is still denied:
+
 1. Run it with `--sandbox limits` to confirm the script itself works: `analyst --sandbox limits run scripts/x.py`. This applies resource limits only and is badged as such.
-2. Run with `-vv` and look at the kernel's stderr for the generated profile or `bwrap` argv, and check which path the denied operation touches.
+2. Print and test the exact wrapper for your repo and interpreter, outside the CLI:
+   ```sh
+   python/kernel/.venv/bin/python -m analyst_kernel.sandbox --python /path/to/repo/.venv/bin/python --root /path/to/repo --run
+   ```
+   It prints the profile (or `bwrap` argv) and then executes a one-line Python command under it. On macOS, denials are also logged by the system: `log stream --style compact --predicate 'sender == "Sandbox"'` in another terminal shows the operation and path that was refused.
 3. Add that path to `data_dirs` in `.analyst/project.toml` if it is data, or report it if it is part of the interpreter or a system location.
 
 **Matplotlib cannot find a font cache or config.** Runs set `MPLCONFIGDIR` inside the run directory, which is writable; the user's `~/.matplotlib` is intentionally hidden.

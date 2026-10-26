@@ -270,7 +270,31 @@ def _q(path: Path | str) -> str:
     return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _ancestors_under(path: Path, home: Path) -> list[Path]:
+    """Directories from ``home`` (inclusive) down to ``path``'s parent, when ``path`` is under ``home``."""
+    try:
+        rel = path.relative_to(home)
+    except ValueError:
+        return []
+    out = [home]
+    cur = home
+    for part in rel.parts[:-1]:
+        cur = cur / part
+        out.append(cur)
+    return out
+
+
 def sandbox_exec_profile(spec: SandboxSpec) -> str:
+    """Build the SBPL profile.
+
+    Later rules take precedence, so the profile allows reads everywhere, denies the home
+    directory, then re-allows the specific subtrees a run needs. The macOS sandbox also
+    checks ``file-read-metadata`` on every component of a path during lookup, so for each
+    re-allowed subtree under home the chain of ancestor directories gets metadata access
+    (stat only, no contents); without it the allow rule for the subtree never takes effect
+    and exec of a venv interpreter whose base lives under ``~/.local/share/uv`` fails with
+    "Operation not permitted".
+    """
     home = Path(os.path.realpath(spec.home or _home()))
     lines = [
         "(version 1)",
@@ -278,9 +302,17 @@ def sandbox_exec_profile(spec: SandboxSpec) -> str:
         '(allow file-read* (subpath "/"))',
         f"(deny file-read* (subpath {_q(home)}))",
     ]
-    for d in spec.read_only_dirs():
+    ro = spec.read_only_dirs()
+    rw = spec.writable_dirs()
+    ancestors: list[Path] = []
+    for d in ro + rw:
+        ancestors += _ancestors_under(Path(os.path.realpath(d)), home)
+        ancestors += _ancestors_under(d, home)
+    for a in _dedupe(ancestors):
+        lines.append(f"(allow file-read-metadata (literal {_q(a)}))")
+    for d in ro:
         lines.append(f"(allow file-read* (subpath {_q(d)}))")
-    for d in spec.writable_dirs():
+    for d in rw:
         lines.append(f"(allow file-read* file-write* (subpath {_q(d)}))")
     lines.append('(allow file-write* (subpath "/private/tmp"))')
     lines.append('(allow file-write* (subpath "/private/var/folders"))')
@@ -335,3 +367,49 @@ def venv_of(python: Path) -> Path | None:
 
 def tooling_dir() -> Path:
     return _home() / ".analyst" / "tooling"
+
+
+# ---- diagnostics --------------------------------------------------------------------
+
+
+def _probe_main(argv: list[str] | None = None) -> int:
+    """Print the profile or argv for a spec and optionally execute a trivial command under it.
+
+    python -m analyst_kernel.sandbox --python <venv python> --root <repo> [--kind sandbox-exec|bwrap] [--run]
+    """
+    import argparse
+    import tempfile
+
+    ap = argparse.ArgumentParser(description="Show and test the sandbox wrapper for a repo and interpreter.")
+    ap.add_argument("--python", required=True, help="Session interpreter, usually <repo>/.venv/bin/python.")
+    ap.add_argument("--root", required=True, help="Repository root.")
+    ap.add_argument("--kind", default="auto", choices=KINDS, help="Sandbox kind (default: auto).")
+    ap.add_argument(
+        "--run", action="store_true", help="Execute `python -c` under the wrapper after printing it."
+    )
+    a = ap.parse_args(argv)
+    root = Path(a.root).resolve()
+    python = Path(a.python)
+    scratch = Path(tempfile.mkdtemp(prefix="analyst-sandbox-probe-"))
+    out_dir = scratch / "out"
+    run_dir = scratch / "run"
+    out_dir.mkdir()
+    run_dir.mkdir()
+    venv = python.parent.parent if python.parent.name == "bin" else None
+    spec = SandboxSpec(root=root, venv=venv, run_dir=run_dir, out_dir=out_dir, python=python)
+    kind = detect(a.kind)
+    cmd = wrap(kind, spec, [str(python), "-c", "import sys; print('sandbox ok:', sys.executable)"])
+    sys.stdout.write(f"kind: {kind}\n")
+    if cmd.profile:
+        sys.stdout.write(cmd.profile)
+    else:
+        sys.stdout.write(" ".join(cmd.argv) + "\n")
+    if not a.run:
+        return 0
+    sys.stdout.flush()
+    proc = subprocess.run(cmd.argv, preexec_fn=cmd.preexec(), cwd=root)
+    return proc.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(_probe_main())

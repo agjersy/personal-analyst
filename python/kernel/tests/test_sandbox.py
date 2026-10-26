@@ -38,8 +38,15 @@ def spec(tmp_path: Path, network=False) -> SandboxSpec:
     out = root / "out" / "s" / "r1"
     out.mkdir(parents=True)
     return SandboxSpec(
-        root=root, venv=venv, run_dir=run_dir, out_dir=out, data_dirs=[data, tmp_path / "missing"],
-        tooling_dir=tooling, derived_dir=root / "data" / "derived", home=tmp_path / "home", network=network,
+        root=root,
+        venv=venv,
+        run_dir=run_dir,
+        out_dir=out,
+        data_dirs=[data, tmp_path / "missing"],
+        tooling_dir=tooling,
+        derived_dir=root / "data" / "derived",
+        home=tmp_path / "home",
+        network=network,
         python=venv / "bin" / "python",
     )
 
@@ -52,6 +59,49 @@ def test_interpreter_base_is_readable_despite_hidden_home(tmp_path: Path):
     prof = sandbox_exec_profile(s)
     deny = prof.index(f'(deny file-read* (subpath "{tmp_path / "home"}"))')
     assert prof.index(f'(allow file-read* (subpath "{base}"))') > deny
+
+
+def test_profile_grants_metadata_on_ancestors_under_home(tmp_path: Path):
+    # repo under HOME plus a uv interpreter under HOME: every ancestor between HOME and each
+    # allowed subtree gets file-read-metadata, and those rules precede the subtree allows
+    home = tmp_path / "home"
+    s = spec(tmp_path)
+    repo = home / "projects" / "analysis"
+    repo.mkdir(parents=True)
+    s.root = repo
+    prof = sandbox_exec_profile(s)
+    lines = prof.splitlines()
+    deny = lines.index(f'(deny file-read* (subpath "{home}"))')
+    for a in (
+        home,
+        home / "projects",
+        home / ".local",
+        home / ".local" / "share",
+        home / ".local" / "share" / "uv",
+        home / ".local" / "share" / "uv" / "python",
+    ):
+        rule = f'(allow file-read-metadata (literal "{a}"))'
+        assert rule in lines, rule
+        assert lines.index(rule) > deny
+    assert f'(allow file-read-metadata (literal "{repo}"))' not in lines  # the subtree itself gets file-read*
+    base = home / ".local" / "share" / "uv" / "python" / "cpython-3.12"
+    assert lines.index(f'(allow file-read* (subpath "{base}"))') > lines.index(
+        f'(allow file-read-metadata (literal "{home}"))'
+    )
+    # a directory outside HOME needs no ancestor grants
+    assert '(allow file-read-metadata (literal "/"))' not in lines
+
+
+def test_sandbox_probe_prints_profile(tmp_path: Path, capsys):
+    s = spec(tmp_path)
+    rc = (
+        sandbox._probe_main(["--python", str(s.python), "--root", str(s.root), "--kind", "sandbox-exec"])
+        if sys.platform == "darwin"
+        else sandbox._probe_main(["--python", str(s.python), "--root", str(s.root), "--kind", "limits"])
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("kind: ")
 
 
 def test_pyvenv_cfg_home_is_used_when_python_is_not_a_symlink(tmp_path: Path):
@@ -144,7 +194,9 @@ def test_limits_preexec_applies_rlimits():
 
     code = "import resource,json;print(json.dumps([resource.getrlimit(resource.RLIMIT_AS)[0], resource.getrlimit(resource.RLIMIT_NOFILE)[0]]))"
     out = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True,
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
         preexec_fn=sandbox.limits_preexec(1 * 1024**3, min(256, hard)),
     ).stdout
     as_limit, nofile = json.loads(out)
@@ -175,7 +227,9 @@ def test_detect_order(monkeypatch):
 
 def test_bwrap_available_needs_binary(monkeypatch):
     assert sandbox.bwrap_available(which=lambda name: None) is False
-    assert sandbox.sandbox_exec_available(which=lambda name: "/usr/bin/sandbox-exec") is (sys.platform == "darwin")
+    assert sandbox.sandbox_exec_available(which=lambda name: "/usr/bin/sandbox-exec") is (
+        sys.platform == "darwin"
+    )
 
 
 def test_venv_of(tmp_path: Path):
